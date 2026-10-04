@@ -2,7 +2,7 @@
 
 ADR 0002 pinned the crates.io `hf-xet` and `xet-data` 1.6.0 release. That release miscounts dedup when defrag prevention refuses a match: the match lands in `deduped_bytes` and is then counted again as new data, so `deduped_bytes` overstates the dedup taken, and the reported file size exceeds the real one by `defrag_prevented_dedup_bytes` (ADR 0005). xet-core #931 fixed the accounting, and no release after 1.6.0 exists on crates.io yet. The tool therefore depends on xet-core by git at `d2f667c`, the commit the background research read and that the chunker oracle already builds from. Every number comes from the engine with the fix.
 
-The fix changes only accounting. `defrag_prevention.rs` and the chunker are identical between 1.6.0 and `d2f667c`, so which chunks are sent does not change. The full rerun at commit `ce32ad9` confirmed it. On all 47 uploads, transferred bytes, `new_bytes`, xorb and shard bytes uploaded, chunk overlap and the defrag gap are byte-identical to the 1.6.0 results. The accounting fields moved (`deduped_bytes` and `deduped_chunks`, `total_bytes` and `total_chunks`, and the reported file size) on the 34 pairs where defrag prevention refused a match.
+The fix changes only accounting. `defrag_prevention.rs` and the chunker are identical between 1.6.0 and `d2f667c`, so which chunks are sent does not change. The full rerun at commit `dfafd1e` confirmed it. On all 47 uploads, transferred bytes, `new_bytes`, xorb and shard bytes uploaded, chunk overlap and the defrag gap are byte-identical to the 1.6.0 results. The accounting fields moved (`deduped_bytes` and `deduped_chunks`, `total_bytes` and `total_chunks`, and the reported file size) on the 34 pairs where defrag prevention refused a match.
 
 ## Considered Options
 

@@ -12,7 +12,7 @@ Prior evidence, unverified by us: a background research pass compared reconstruc
 
 ## The tool
 
-There is one Rust binary, working name `ckpt-dedup`, built on crates.io `xet-data` and `hf-xet` 1.6.0 (ADR 0002). The background research for these crates was done against xet-core at commit `d2f667c`, cloned at `/workplace/enrikes/huggingface-xet/xet-core`. Use that clone to read the real API, then depend on the published crates.
+There is one Rust binary, working name `ckpt-dedup`, built on crates.io `xet-data` and `hf-xet` 1.6.0 (ADR 0002). The background research for these crates was done against xet-core at commit `d2f667c`, cloned at `/workplace/enrikes/huggingface-xet/xet-core`. Use that clone to read the real API, then depend on the published crates. Amended by ADR 0006: the published 1.6.0 crates miscount dedup when defrag prevention refuses a match, so the tool depends on xet-core at `d2f667c` by git, which has the fix.
 
 **`overlap <base> <next>`.** This subcommand:
 

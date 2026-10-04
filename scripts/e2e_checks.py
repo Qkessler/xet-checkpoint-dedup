@@ -61,13 +61,15 @@ def sweep(path: str):
         )
         if abs(plainGap) > tolerance:
             fail(
-                f"{path}: scattered density {density:g} is {plainGap:+.4f} from exp(-values_per_chunk * P), tolerance {tolerance:.4f}"
+                f"{path}: scattered density {density:g} is {plainGap:+.4f} from exp(-values_per_chunk * P), "
+                f"tolerance {tolerance:.4f}"
             )
         for clusteredMode in ("rows", "tensors"):
             clustered = cells[(clusteredMode, density)]["mean_chunk_overlap_fraction"]
             if not clustered > mean:
                 fail(
-                    f"{path}: {clusteredMode} overlap {clustered:.4f} is not above scattered {mean:.4f} at density {density:g}"
+                    f"{path}: {clusteredMode} overlap {clustered:.4f} is not above scattered {mean:.4f} "
+                    f"at density {density:g}"
                 )
     print(f"done sweep {path}")
 
@@ -109,9 +111,9 @@ def uploadPair(path: str):
         fail(f"{path}: new_bytes {newBytes} < next size - chunk overlap {nextBytes - report['chunk_overlap_bytes']}")
     if report["defrag_gap_bytes"] < 0:
         fail(f"{path}: defrag gap {report['defrag_gap_bytes']} is negative")
-    metrics = report["next"]["dedup_metrics"]
-    if metrics["deduped_bytes"] != report["accepted_dedup_bytes"]:
-        fail(f"{path}: deduped_bytes {metrics['deduped_bytes']} != file bytes - new_bytes {report['accepted_dedup_bytes']}")
+    dedupedBytes = report["next"]["dedup_metrics"]["deduped_bytes"]
+    if dedupedBytes != report["accepted_dedup_bytes"]:
+        fail(f"{path}: deduped_bytes {dedupedBytes} != file bytes - new_bytes {report['accepted_dedup_bytes']}")
     if report["next"]["reported_file_bytes"] != nextBytes:
         fail(f"{path}: reported file size {report['next']['reported_file_bytes']} != {nextBytes} on disk")
     print(f"ok upload {path}")

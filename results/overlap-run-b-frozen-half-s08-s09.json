@@ -2,14 +2,14 @@
   "name": "overlap-run-b-frozen-half-s08-s09",
   "kind": "overlap",
   "tool": {
-    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "git_commit": "ce32ad9236e34e9a4a473f15e909c1fed4e0ab88",
     "git_dirty": false,
     "crate_versions": {
-      "hf-xet": "1.6.0",
-      "xet-client": "1.6.0",
-      "xet-core-structures": "1.6.0",
-      "xet-data": "1.6.0",
-      "xet-runtime": "1.6.0"
+      "hf-xet": "1.6.0+git.d2f667c",
+      "xet-client": "1.6.0+git.d2f667c",
+      "xet-core-structures": "1.6.0+git.d2f667c",
+      "xet-data": "1.6.0+git.d2f667c",
+      "xet-runtime": "1.6.0+git.d2f667c"
     }
   },
   "inputs": [

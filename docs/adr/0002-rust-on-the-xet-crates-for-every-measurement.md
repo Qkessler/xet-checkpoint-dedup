@@ -1,6 +1,6 @@
 # Rust on the Xet crates for every measurement
 
-All measurements come from one Rust binary built on the crates.io `xet-data` and `hf-xet` crates, pinned to 1.6.0 to match xet-core commit `d2f667c`. `overlap` uses `xet_data::deduplication::Chunker` directly and attributes bytes to tensors. `upload` uses the session API, the same code that the Python `hf_xet` package wraps, against a `local://` store, and reports `DeduplicationMetrics` for the next checkpoint. Python is used only to download checkpoints, generate training runs, and draw charts from files the Rust tool writes.
+All measurements come from one Rust binary built on the `xet-data` and `hf-xet` crates. They were first pinned to the crates.io 1.6.0 release, and ADR 0006 moved them to xet-core commit `d2f667c` by git, for the fixed dedup accounting. `overlap` uses `xet_data::deduplication::Chunker` directly and attributes bytes to tensors. `upload` uses the session API, the same code that the Python `hf_xet` package wraps, against a `local://` store, and reports `DeduplicationMetrics` for the next checkpoint. Python is used only to download checkpoints, generate training runs, and draw charts from files the Rust tool writes.
 
 The obvious path is Python on `hf_xet` or `huggingface_hub`. We avoid it because the point is to work directly on the engine the target team maintains, and because per-tensor attribution needs chunk boundaries that the Python API does not expose.
 

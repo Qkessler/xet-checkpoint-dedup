@@ -2,14 +2,14 @@
   "name": "upload-run-a-s00-s01",
   "kind": "upload",
   "tool": {
-    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "git_commit": "ce32ad9236e34e9a4a473f15e909c1fed4e0ab88",
     "git_dirty": false,
     "crate_versions": {
-      "hf-xet": "1.6.0",
-      "xet-client": "1.6.0",
-      "xet-core-structures": "1.6.0",
-      "xet-data": "1.6.0",
-      "xet-runtime": "1.6.0"
+      "hf-xet": "1.6.0+git.d2f667c",
+      "xet-client": "1.6.0+git.d2f667c",
+      "xet-core-structures": "1.6.0+git.d2f667c",
+      "xet-data": "1.6.0+git.d2f667c",
+      "xet-runtime": "1.6.0+git.d2f667c"
     }
   },
   "inputs": [
@@ -57,15 +57,15 @@
     },
     "next": {
       "file_bytes": 988097824,
-      "reported_file_bytes": 994380458,
+      "reported_file_bytes": 988097824,
       "dedup_metrics": {
-        "total_bytes": 994380458,
-        "deduped_bytes": 15255862,
+        "total_bytes": 988097824,
+        "deduped_bytes": 8973228,
         "new_bytes": 979124596,
         "deduped_bytes_by_global_dedup": 0,
         "defrag_prevented_dedup_bytes": 6282634,
-        "total_chunks": 15600,
-        "deduped_chunks": 424,
+        "total_chunks": 15454,
+        "deduped_chunks": 278,
         "new_chunks": 15176,
         "deduped_chunks_by_global_dedup": 0,
         "defrag_prevented_dedup_chunks": 146,
@@ -79,6 +79,6 @@
     "accepted_dedup_bytes": 8973228,
     "transferred_bytes": 979889764,
     "defrag_gap_bytes": 6282634,
-    "raw_defrag_gap_bytes": 0
+    "raw_defrag_gap_bytes": 6282634
   }
 }

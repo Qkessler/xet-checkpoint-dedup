@@ -2,14 +2,14 @@
   "name": "upload-chenjakcy6-s110-s113",
   "kind": "upload",
   "tool": {
-    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "git_commit": "ce32ad9236e34e9a4a473f15e909c1fed4e0ab88",
     "git_dirty": false,
     "crate_versions": {
-      "hf-xet": "1.6.0",
-      "xet-client": "1.6.0",
-      "xet-core-structures": "1.6.0",
-      "xet-data": "1.6.0",
-      "xet-runtime": "1.6.0"
+      "hf-xet": "1.6.0+git.d2f667c",
+      "xet-client": "1.6.0+git.d2f667c",
+      "xet-core-structures": "1.6.0+git.d2f667c",
+      "xet-data": "1.6.0+git.d2f667c",
+      "xet-runtime": "1.6.0+git.d2f667c"
     }
   },
   "inputs": [
@@ -57,15 +57,15 @@
     },
     "next": {
       "file_bytes": 988097824,
-      "reported_file_bytes": 994504692,
+      "reported_file_bytes": 988097824,
       "dedup_metrics": {
-        "total_bytes": 994504692,
-        "deduped_bytes": 11770302,
+        "total_bytes": 988097824,
+        "deduped_bytes": 5363434,
         "new_bytes": 982734390,
         "deduped_bytes_by_global_dedup": 0,
         "defrag_prevented_dedup_bytes": 6406868,
-        "total_chunks": 15514,
-        "deduped_chunks": 396,
+        "total_chunks": 15336,
+        "deduped_chunks": 218,
         "new_chunks": 15118,
         "deduped_chunks_by_global_dedup": 0,
         "defrag_prevented_dedup_chunks": 178,
@@ -79,6 +79,6 @@
     "accepted_dedup_bytes": 5363434,
     "transferred_bytes": 983497542,
     "defrag_gap_bytes": 6406868,
-    "raw_defrag_gap_bytes": 0
+    "raw_defrag_gap_bytes": 6406868
   }
 }

@@ -246,3 +246,16 @@ Decision: report both the local measurement (what xet-core 1.6.0 would transfer)
 **Prediction, written before the full rerun.** Transferred bytes, chunk overlap and the defrag gap stay byte-identical on every pair. `deduped_bytes` drops to the accepted dedup, and the reported file size drops to the real size. The verdicts do not change.
 
 **Saw on the first pair (run-a steps 10 to 11).** The reported file size equals the size on disk, `deduped_bytes` equals `file bytes - new_bytes`, and transferred bytes and the defrag gap are byte-identical to the 1.6.0 result. Full rerun follows.
+
+**Saw on the full rerun (commit `ce32ad9`, clean tree).** The prediction held. Across all 47 uploads (46 pairs plus `upload(A, A)`), transferred bytes, `new_bytes`, xorb bytes uploaded, shard bytes uploaded, chunk overlap, accepted dedup and the defrag gap are byte-identical to the 1.6.0 results. Raw `deduped_bytes` changed on 34 pairs, the ones where defrag prevention refused a match, and now equals `file bytes - new_bytes`. The reported file size equals the size on disk on every pair. The new e2e assertions pass. The verdicts, the README tables and the sweep are unchanged. The only red check is still the pre-registered sweep curve. The Hub reconstruction rows were refreshed at the same commit (public reads) and are unchanged.
+
+### Review of the engine switch
+
+- The claim that only accounting changed: confirmed by the reviewer's diff of `xet_data`, `xet_core_structures` and the local client between 1.6.0 and `d2f667c`. Nothing on the upload path changes `new_bytes` or the bytes uploaded.
+- Telemetry: confirmed off in two ways. The config path exists, and the local client has no telemetry sink.
+- `build.rs` git stamping and `Cargo.lock`: confirmed. Every xet crate resolves to `d2f667c`.
+- ADR 0006 claimed "every pair" before the rerun, and listed too few changed fields: fixed with the rerun's numbers and the full list of fields.
+- `docs/plan.md`, ADR 0002 and ADR 0005 still described 1.6.0 as the engine: fixed, each now points at ADR 0006.
+- README surprise 2 made the same claim before the rerun: fixed, it now cites the rerun.
+- `FileCleaner` now fails hard on a size mismatch: noted in ADR 0006.
+- Lines over 120 columns and a duplicate lookup in `e2e_checks.py`: fixed.

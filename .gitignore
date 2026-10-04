@@ -1,0 +1,6 @@
+/target
+/local/
+/results/tmp/
+.venv/
+__pycache__/
+*.safetensors

@@ -8,9 +8,9 @@ Buckets are backed by Xet, a content-defined chunking store that skips chunks it
 
 > even if we were too lazy to write the sparse encoding and just uploaded full anchors every step, Xet would _still_ only transfer the changed chunks.
 
-That sentence is exactly right: Xet only sends changed chunks. What it leaves open is how many chunks change when, as the blog reports, about 1% of elements move each step. If few do, storage dedup alone would make full-checkpoint sync nearly free, and much simpler to build. We wanted to know for sure, so we measured it with Xet's own Rust code, on our own GRPO run and on public checkpoints from the Hub.
+That sentence is exactly right: Xet only sends changed chunks. What it leaves open is how many chunks change when, as the blog reports, about 1% of elements move each step. If few do, storage dedup alone would make full-checkpoint sync nearly free, and much simpler to build. I wanted to know for sure, so I measured it with Xet's own Rust code, on our own GRPO run and on public checkpoints from the Hub.
 
-## What we found
+## What I found
 
 <!-- BEGIN value -->
 If storage dedup alone made full uploads cheap, RL teams could skip the sparse encoding and let Xet do the work. That would be a big simplification, so it was worth measuring with Xet's own code. The answer: the blog's sparse encoding earns its place. On our own run, which uses the blog's setup at its most favourable, a full upload sends a median **975.5 MB per step** and the sparse delta **26.8 MB**, a median of **36.6x less** per weight sync. Over a 1,000-step run that projects to about 27 GB instead of 975 GB (median step x step count).

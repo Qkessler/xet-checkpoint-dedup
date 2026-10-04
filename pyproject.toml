@@ -1,0 +1,32 @@
+[project]
+name = "xet-checkpoint-dedup-glue"
+version = "0.1.0"
+description = "Glue for ckpt-dedup: downloads, the training run, the numpy oracle, and charts."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "huggingface-hub>=1.0",
+    "numpy>=2.0",
+    "polars>=1.0",
+    "matplotlib>=3.9",
+]
+
+[dependency-groups]
+train = [
+    "torch>=2.5",
+    "transformers>=4.50",
+    "trl>=0.20",
+    "datasets>=3.0",
+    "accelerate>=1.0",
+    "safetensors>=0.4",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

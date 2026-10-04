@@ -1,0 +1,125 @@
+//! `ckpt-dedup`: measures Xet chunk reuse between consecutive model checkpoints.
+
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use ckpt_dedup::overlap::{OverlapReport, RollupRow, measure_overlap};
+use ckpt_dedup::results::{InputStamp, repo_root, write_result};
+use clap::{Parser, Subcommand};
+
+#[derive(Debug, Parser)]
+#[command(version, about)]
+struct Cli {
+    /// Directory that receives `<name>.json`.
+    #[arg(long, global = true, default_value_os_t = repo_root().join("results"))]
+    results_dir: PathBuf,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Chunk both checkpoints, mark the next file's chunks as reused or new, and attribute bytes to tensors.
+    Overlap {
+        base: PathBuf,
+        next: PathBuf,
+        /// Result name; the run writes `<results-dir>/<name>.json`.
+        #[arg(long)]
+        name: String,
+        /// Also print one row per tensor.
+        #[arg(long)]
+        per_tensor: bool,
+    },
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    match cli.command {
+        Command::Overlap {
+            base,
+            next,
+            name,
+            per_tensor,
+        } => run_overlap(&cli.results_dir, &base, &next, &name, per_tensor),
+    }
+}
+
+fn read_input(path: &Path) -> Result<Vec<u8>> {
+    std::fs::read(path).with_context(|| format!("reading {}", path.display()))
+}
+
+fn run_overlap(results_dir: &Path, base: &Path, next: &Path, name: &str, per_tensor: bool) -> Result<()> {
+    let base_file = read_input(base)?;
+    let next_file = read_input(next)?;
+    let report = measure_overlap(&base_file, &next_file).context("measuring chunk overlap")?;
+    let inputs = [
+        InputStamp::of("base", base, &base_file),
+        InputStamp::of("next", next, &next_file),
+    ];
+    let path = write_result(results_dir, name, "overlap", &inputs, None, &report)?;
+    print_overlap(&report, per_tensor);
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn format_fraction(fraction: Option<f64>) -> String {
+    fraction.map_or_else(|| "-".to_string(), |value| format!("{value:.6}"))
+}
+
+fn print_rollup_table(title: &str, rows: &[RollupRow]) {
+    println!("\n{title}");
+    println!(
+        "{:<20} {:>14} {:>12} {:>16} {:>9} {:>14}",
+        "group", "bytes", "unchanged", "overlap_bytes", "overlap%", "sparse_delta"
+    );
+    for row in rows {
+        println!(
+            "{:<20} {:>14} {:>12} {:>16} {:>9.3} {:>14}",
+            row.group,
+            row.bytes,
+            format_fraction(row.unchanged_element_fraction),
+            row.chunk_overlap_bytes,
+            row.chunk_overlap_percent,
+            row.sparse_delta_bytes
+        );
+    }
+}
+
+fn print_overlap(report: &OverlapReport, per_tensor: bool) {
+    if per_tensor {
+        println!(
+            "{:<56} {:>5} {:<12} {:<5} {:>12} {:>10} {:>12} {:>9}",
+            "tensor", "layer", "kind", "dtype", "bytes", "unchanged", "overlap", "overlap%"
+        );
+        for row in &report.tensors {
+            println!(
+                "{:<56} {:>5} {:<12} {:<5} {:>12} {:>10} {:>12} {:>9.3}",
+                row.name,
+                row.layer.map_or_else(|| "-".to_string(), |layer| layer.to_string()),
+                row.kind.label(),
+                row.dtype,
+                row.bytes,
+                format_fraction(row.unchanged_element_fraction),
+                row.chunk_overlap_bytes,
+                row.chunk_overlap_percent
+            );
+        }
+    }
+    print_rollup_table("by tensor kind", &report.by_kind);
+    print_rollup_table("by layer", &report.by_layer);
+    print_rollup_table("whole file", std::slice::from_ref(&report.whole_file));
+    let stats = &report.chunk_stats;
+    println!(
+        "\nchunks: base {} next {} reused {} max-size {} (mean next chunk {:.0} bytes)",
+        stats.base_chunks,
+        stats.next_chunks,
+        stats.next_reused_chunks,
+        stats.next_max_size_chunks,
+        stats.next_mean_chunk_bytes
+    );
+    println!(
+        "sparse delta: {} bytes ({:.4}% of the next file)",
+        report.whole_file.sparse_delta_bytes,
+        100.0 * report.whole_file.sparse_delta_bytes as f64 / report.whole_file.bytes.max(1) as f64
+    );
+}

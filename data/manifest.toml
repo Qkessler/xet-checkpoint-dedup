@@ -1,0 +1,59 @@
+# Every input the measurements read. `just fetch` downloads the `hub` entries into
+# ~/.cache/xet-checkpoint-dedup/inputs/<key>/<file> and verifies each sha256.
+# `generated` entries are written by `just train`; fetch only verifies them.
+
+[inputs.spec-reference-csv]
+kind = "hub"
+repo_type = "dataset"
+repo_id = "xet-team/xet-spec-reference-files"
+revision = "c4aa3a3f15b1395fff5ce934784bf6c8f2d62de8"
+file = "Electric_Vehicle_Population_Data_20250917.csv"
+sha256 = "f41255b252f776125f2b657136654e4d4d5d2ccf8ef4db0ec186bd1981b69734"
+
+[inputs.spec-reference-chunks]
+kind = "hub"
+repo_type = "dataset"
+repo_id = "xet-team/xet-spec-reference-files"
+revision = "c4aa3a3f15b1395fff5ce934784bf6c8f2d62de8"
+file = "Electric_Vehicle_Population_Data_20250917.csv.chunks"
+sha256 = "b20bb4b910bab5d67a4082313cf83afea201747f02e0aedc4158a333ba61c684"
+
+[inputs.qwen25-05b-instruct]
+kind = "hub"
+repo_type = "model"
+repo_id = "Qwen/Qwen2.5-0.5B-Instruct"
+revision = "7ae557604adf67be50417f59c2c2f167def9a775"
+file = "model.safetensors"
+sha256 = "fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe"
+
+[inputs.chenjakcy6-s110]
+kind = "hub"
+repo_type = "model"
+repo_id = "ChenJakcy6/Qwen2-0.5B-GRPO-test"
+revision = "5012bf807a40cdeaa7f623624980043027828a25"
+file = "model.safetensors"
+sha256 = "197717eb538d3ac9241754305c2882fc0255878b0385f15c62b614fc5b328856"
+
+[inputs.chenjakcy6-s113]
+kind = "hub"
+repo_type = "model"
+repo_id = "ChenJakcy6/Qwen2-0.5B-GRPO-test"
+revision = "1cd8897a89b02dbd97a2e8eafb471ca25e9b94f0"
+file = "model.safetensors"
+sha256 = "971e12db7d2e4bcdd50a054a2abb9836e3e3062b0c3caf8f95eb0f305420f643"
+
+[inputs.ajjyy-s3150]
+kind = "hub"
+repo_type = "model"
+repo_id = "ajjyy/Qwen2-0.5B-GRPO-attempt1"
+revision = "868f0e701973847ec82220637c1149ca58acd0d9"
+file = "model.safetensors"
+sha256 = "0b6be68221ca7d96f593a9bb3fcbe8248aa0210d5b68c8758016c28a0f38f491"
+
+[inputs.ajjyy-s3160]
+kind = "hub"
+repo_type = "model"
+repo_id = "ajjyy/Qwen2-0.5B-GRPO-attempt1"
+revision = "8ac61c6bd32df293c1c7fd1dc3057b2407449dcc"
+file = "model.safetensors"
+sha256 = "fbfe0eded5dff18ee7420d230281b52e3df5c9bbe61686ef3d0616f00d5f1d95"

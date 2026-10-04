@@ -293,3 +293,23 @@ Decision: report both the local measurement (what xet-core 1.6.0 would transfer)
 - Overplotting in the verdict chart, and the cost chart omitting third-party pairs: noted in the captions, which point at `docs/results.md`.
 - The PR close date and "not yet released" are facts typed into `report.py`, not results: kept. They were checked with `gh` and against crates.io, and they are dated.
 - Charts are not staleness-checked: kept as before. `just report` always redraws them.
+
+## 2026-10-04 Constructive framing (owner request)
+
+**Asked.** The README read as "the blog's claim is wrong". The owner wants it constructive: credit the blog, show why the question was worth answering, and lead with the value of the answer.
+
+**Ran.** Wording only, so every number is unchanged and `just check` passes.
+
+- New title: "How much does Xet dedup save when you sync full RL checkpoints?"
+- "The claim" became "The question". It credits the blog's engineering, quotes the aside once as an appealing side effect, and says plainly that the sentence is right and leaves open how many chunks change.
+- "Why it matters" became "What we found": the sparse encoding earns its place, and what each audience gains.
+- The answer block now leads with "Xet dedup helps, and the sparse encoding does the heavy lifting" instead of "No."
+- The ADR 0001 labels (holds, depends, does not hold) stay, in the rule's description and in `docs/results.md`, because they are the pre-registered rule.
+
+While rewording I corrected three statements against the results:
+
+- With half the layers frozen, the full upload re-sends the trained layers and the embedding, not "only the trained half".
+- The "depends" count now reads "landed in between".
+- The accounting fix is "waiting for a release", not "ready to ship in the next release", which was speculation.
+
+The explainer got the same framing locally.

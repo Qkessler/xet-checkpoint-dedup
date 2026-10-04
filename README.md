@@ -1,44 +1,44 @@
-# Does Xet dedup make full-checkpoint RL weight sync cheap?
+# How much does Xet dedup save when you sync full RL checkpoints?
 
-## The claim
+## The question
 
-Hugging Face's [delta-weight-sync blog](https://huggingface.co/blog/delta-weight-sync) (2026-05-27) syncs RL weights from the trainer to inference servers through a Hub bucket, which is S3-like storage on the Hugging Face Hub. Every step it sends a sparse delta: only the bf16 elements that changed since the last step. Every few steps it also writes an anchor, a full checkpoint. It then makes two claims about Xet, the chunk-dedup storage engine behind buckets:
+Hugging Face's [delta-weight-sync blog](https://huggingface.co/blog/delta-weight-sync) (2026-05-27) is a neat piece of engineering. It syncs RL weights from the trainer to inference servers through a Hub bucket (S3-like storage on the Hugging Face Hub). Every step it sends only the bf16 elements that changed, a sparse delta, and every few steps a full checkpoint, an anchor. That cuts the per-step payload from gigabytes to tens of megabytes.
 
-> The practical upshot, which is delightful in this context, is that even if we were too lazy to write the sparse encoding and just uploaded full anchors every step, Xet would _still_ only transfer the changed chunks.
+Buckets are backed by Xet, a content-defined chunking store that skips chunks it already holds, and the blog points out an appealing side effect:
 
-> Xet content-addresses storage so consecutive anchors share chunks at rest (which keeps your bucket from blowing up)
+> even if we were too lazy to write the sparse encoding and just uploaded full anchors every step, Xet would _still_ only transfer the changed chunks.
 
-Read literally, the first is true by construction: Xet sends the chunks that differ. This repo tests the reading a practitioner would act on: that full uploads cost about as little as sparse deltas, so the sparse encoding is optional.
+That sentence is exactly right: Xet only sends changed chunks. What it leaves open is how many chunks change when, as the blog reports, about 1% of elements move each step. If few do, storage dedup alone would make full-checkpoint sync nearly free, and much simpler to build. We wanted to know for sure, so we measured it with Xet's own Rust code, on our own GRPO run and on public checkpoints from the Hub.
 
-## Why it matters
+## What we found
 
 <!-- BEGIN value -->
-If the claim held, an RL team could skip the sparse encoding and upload the whole checkpoint every step, and Xet would make that cheap. It does not. On our own run, which uses the blog's setup at its most favourable, a full upload sends a median **975.5 MB per step**, against **26.8 MB** for the sparse delta, a median of **36.6x more** per pair on every weight sync. Over a 1,000-step run that projects to about 975 GB instead of 27 GB (median step x step count).
+If storage dedup alone made full uploads cheap, RL teams could skip the sparse encoding and let Xet do the work. That would be a big simplification, so it was worth measuring with Xet's own code. The answer: the blog's sparse encoding earns its place. On our own run, which uses the blog's setup at its most favourable, a full upload sends a median **975.5 MB per step** and the sparse delta **26.8 MB**, a median of **36.6x less** per weight sync. Over a 1,000-step run that projects to about 27 GB instead of 975 GB (median step x step count).
 
-Who acts on the claim, and what this measurement changes for them:
+What this gives each audience:
 
-- **RL teams syncing weights through a Hub bucket.** Keep the sparse encoding: Xet chunk dedup does not replace it. The blog's TRL pull requests for sparse sync ([#5417](https://github.com/huggingface/trl/pull/5417), [#5937](https://github.com/huggingface/trl/pull/5937)) were closed without merging on 2026-09-14, so TRL does not ship the sparse path today, and a user who follows the aside pays the full cost.
-- **Anyone keeping checkpoint history in a bucket.** The blog also says consecutive anchors "share chunks at rest". Enterprise buckets bill on deduplicated bytes, and each new checkpoint of our run adds a median 98.6% of its size to storage as new chunks (counted before Xet's compression).
-- **Xet and TRL maintainers.** The measurement shows where chunk dedup does pay: when whole regions stay bit-identical, as with frozen layers, where a median 36.6% of each checkpoint was reused. It also found that the released `hf-xet` 1.6.0 reports inflated dedup and file sizes to its callers, which is fixed in xet-core but not yet released.
+- **RL teams syncing weights through a Hub bucket: confidence that the sparse path is worth its code.** Xet dedup does not stand in for it. TRL's pull requests for sparse sync ([#5417](https://github.com/huggingface/trl/pull/5417), [#5937](https://github.com/huggingface/trl/pull/5937)) were closed without merging on 2026-09-14, and these numbers make the case for landing that work.
+- **Anyone keeping checkpoint history in a bucket: a realistic storage budget.** Enterprise buckets bill on deduplicated bytes, and each new checkpoint of our run adds a median 98.6% of its size as new chunks (counted before Xet's compression).
+- **Xet and TRL maintainers: a map of where content-defined dedup shines.** It pays when whole regions stay bit-identical: with half the layers frozen, a median 36.6% of each checkpoint was reused. The work also turned up a dedup accounting bug in the released `hf-xet` 1.6.0. It is fixed in xet-core and waiting for a release.
 <!-- END value -->
 
 ![Bytes per weight sync: full checkpoint, full upload after Xet dedup, and sparse delta](docs/charts/cost-per-weight-sync.png)
 
 The chart shows our two runs. The third-party Hub pairs, whose sparse deltas are smaller still, are in [docs/results.md](docs/results.md).
 
-## Answer
+## The numbers, pair by pair
 
 <!-- BEGIN answer -->
-**No.** Across 46 checkpoint pairs, uploading the full next checkpoint transferred 63.0% to 99.8% of its size, which is 5.3x to 870.0x the blog's sparse delta for the same pair. Under the rule fixed before measuring (ADR 0001), the claim holds on 0 pairs, depends on 0, and does not hold on 46.
+**Xet dedup helps, and the sparse encoding does the heavy lifting.** Across 46 checkpoint pairs, a full upload transferred 63.0% to 99.8% of the checkpoint, which is 5.3x to 870.0x the sparse delta for the same pair. The bar we set before measuring (ADR 0001) was a full upload within 3x of the sparse delta: 0 pairs reached it, 0 landed in between, and 46 sent at least half the checkpoint.
 
 - On our own one-step-apart GRPO checkpoints (lr 1e-6, the blog's setup and its best case), a median 0.90% of elements change per step, yet only 1.9% of the bytes sit in chunks Xet can reuse.
-- Freezing half the layers is the case where chunk dedup works: 36.6% of each checkpoint is reused, and the rest is still sent in full.
-- The reason is arithmetic, not a defect: a chunk holds about 32,280 bf16 elements, so when 1% of elements change at random, 0.00% of bytes stay in reusable chunks (see "Where chunk dedup works"). Chunk dedup needs changes to cluster.
+- Freezing half the layers shows Xet dedup at work: 36.6% of each checkpoint is reused for free, and the rest (the trained layers and the embedding) is sent again.
+- The reason is arithmetic, not a flaw in Xet: a chunk holds about 32,280 bf16 elements, so when 1% of elements change at random, 0.00% of bytes stay in reusable chunks (see "Where chunk dedup works"). Chunk dedup needs changes to cluster.
 <!-- END answer -->
 
 ![Every checkpoint pair placed against the two verdict thresholds](docs/charts/pairs-against-verdict-rule.png)
 
-Most of the all-trainable pairs overlap near the top of the chart. The verdict rule was fixed before measuring ([ADR 0001](docs/adr/0001-test-the-implied-claim-with-preset-thresholds.md)). A pair **holds** if the full upload sends at most 3x the sparse delta, which is cheap enough to skip the sparse encoding. It does **not hold** if the full upload sends at least half the checkpoint, so chunk dedup saves less than half and the sparse encoding does the real work. Anything between **depends**. "Holds" is tested first, so a pair under 3x counts as holding, whatever its share; no pair comes close. The transferred bytes here count chunks before compression, and so does the sparse delta. Every number behind the charts, pair by pair, is in [docs/results.md](docs/results.md).
+Most of the all-trainable pairs overlap near the top of the chart. We fixed the bar before measuring, so the result could not move it ([ADR 0001](docs/adr/0001-test-the-implied-claim-with-preset-thresholds.md)). A pair counts as **holds** if the full upload sends at most 3x the sparse delta, which would be cheap enough to skip the sparse encoding. It counts as **does not hold** if the full upload sends at least half the checkpoint, so dedup saves less than half and the sparse encoding does the real work. Anything between is **depends**. "Holds" is tested first, so a pair under 3x counts as holding, whatever its share; no pair comes close. The transferred bytes here count chunks before compression, and so does the sparse delta. Every number behind the charts, pair by pair, is in [docs/results.md](docs/results.md).
 
 ## Where chunk dedup works
 

@@ -241,17 +241,18 @@ def answerBlock(pairs: list[dict], sweep: dict) -> str:
     trainable = [pair for pair in pairs if pair["source"] == "run-a" and pair["step_gap"] == 1]
     frozen = [pair for pair in pairs if pair["source"] == "run-b-frozen-half" and pair["step_gap"] == 1]
     if verdictCounts["does not hold"] == len(pairs):
-        headline = "**No.**"
+        headline = "**Xet dedup helps, and the sparse encoding does the heavy lifting.**"
     elif verdictCounts["holds"] == len(pairs):
-        headline = "**Yes.**"
+        headline = "**Xet dedup alone makes full uploads as cheap as sparse deltas.**"
     else:
-        headline = "**Only in part.**"
+        headline = "**Xet dedup alone is enough for some checkpoints and not for others.**"
     lines = [
-        f"{headline} Across {len(pairs)} checkpoint pairs, uploading the full next checkpoint transferred "
-        f"{percent(min(anchorShares))} to {percent(max(anchorShares))} of its size, which is "
-        f"{min(sparseMultiples):.1f}x to {max(sparseMultiples):.1f}x the blog's sparse delta for the same pair. "
-        f"Under the rule fixed before measuring (ADR 0001), the claim holds on {verdictCounts['holds']} pairs, "
-        f"depends on {verdictCounts['depends']}, and does not hold on {verdictCounts['does not hold']}.",
+        f"{headline} Across {len(pairs)} checkpoint pairs, a full upload transferred "
+        f"{percent(min(anchorShares))} to {percent(max(anchorShares))} of the checkpoint, which is "
+        f"{min(sparseMultiples):.1f}x to {max(sparseMultiples):.1f}x the sparse delta for the same pair. The bar we set "
+        f"before measuring (ADR 0001) was a full upload within 3x of the sparse delta: {verdictCounts['holds']} pairs "
+        f"reached it, {verdictCounts['depends']} landed in between, and {verdictCounts['does not hold']} sent at least "
+        "half the checkpoint.",
         "",
     ]
     if trainable:
@@ -263,9 +264,9 @@ def answerBlock(pairs: list[dict], sweep: dict) -> str:
         )
     if frozen:
         lines.append(
-            f"- Freezing half the layers is the case where chunk dedup works: "
+            f"- Freezing half the layers shows Xet dedup at work: "
             f"{percent(statistics.median(pair['chunk_overlap_bytes'] / pair['anchor_bytes'] for pair in frozen))} "
-            f"of each checkpoint is reused, and the rest is still sent in full."
+            f"of each checkpoint is reused for free, and the rest (the trained layers and the embedding) is sent again."
         )
     scatteredAtOnePercent = next(
         cell["mean_chunk_overlap_fraction"]
@@ -273,7 +274,7 @@ def answerBlock(pairs: list[dict], sweep: dict) -> str:
         if cell["mode"] == "scattered" and abs(cell["density"] - 0.01) < 1e-12
     )
     lines.append(
-        f"- The reason is arithmetic, not a defect: a chunk holds about {sweep['result']['values_per_chunk']:,.0f} bf16 "
+        f"- The reason is arithmetic, not a flaw in Xet: a chunk holds about {sweep['result']['values_per_chunk']:,.0f} bf16 "
         f"elements, so when 1% of elements change at random, {percent(scatteredAtOnePercent, 2)} of bytes stay in "
         f'reusable chunks (see "Where chunk dedup works"). Chunk dedup needs changes to cluster.'
     )
@@ -501,27 +502,28 @@ def valueBlock(pairs: list[dict]) -> str:
     projectedSteps = 1000
     return "\n".join(
         [
-            "If the claim held, an RL team could skip the sparse encoding and upload the whole checkpoint every step, "
-            "and Xet would make that cheap. It does not. On our own run, which uses the blog's setup at its most "
-            f"favourable, a full upload sends a median **{megabytes(sentPerStep)} per step**, against "
-            f"**{megabytes(sparsePerStep)}** for the sparse delta, a median of **{medianRatio:.1f}x more** per pair on "
-            f"every weight sync. Over a {projectedSteps:,}-step run that projects to about "
-            f"{sentPerStep * projectedSteps / 1e9:,.0f} GB instead of {sparsePerStep * projectedSteps / 1e9:,.0f} GB "
-            "(median step x step count).",
+            "If storage dedup alone made full uploads cheap, RL teams could skip the sparse encoding and let Xet do the "
+            "work. That would be a big simplification, so it was worth measuring with Xet's own code. The answer: the "
+            "blog's sparse encoding earns its place. On our own run, which uses the blog's setup at its most "
+            f"favourable, a full upload sends a median **{megabytes(sentPerStep)} per step** and the sparse delta "
+            f"**{megabytes(sparsePerStep)}**, a median of **{medianRatio:.1f}x less** per weight sync. Over a "
+            f"{projectedSteps:,}-step run that projects to about {sparsePerStep * projectedSteps / 1e9:,.0f} GB instead "
+            f"of {sentPerStep * projectedSteps / 1e9:,.0f} GB (median step x step count).",
             "",
-            "Who acts on the claim, and what this measurement changes for them:",
+            "What this gives each audience:",
             "",
-            "- **RL teams syncing weights through a Hub bucket.** Keep the sparse encoding: Xet chunk dedup does not "
-            "replace it. The blog's TRL pull requests for sparse sync ([#5417](https://github.com/huggingface/trl/pull/5417), "
-            "[#5937](https://github.com/huggingface/trl/pull/5937)) were closed without merging on 2026-09-14, so TRL does not ship the sparse path today, and a user who follows the "
-            "aside pays the full cost.",
-            '- **Anyone keeping checkpoint history in a bucket.** The blog also says consecutive anchors "share chunks at '
-            'rest". Enterprise buckets bill on deduplicated bytes, and each new checkpoint of our run adds a median '
-            f"{percent(storedShare)} of its size to storage as new chunks (counted before Xet's compression).",
-            "- **Xet and TRL maintainers.** The measurement shows where chunk dedup does pay: when whole regions stay "
-            f"bit-identical, as with frozen layers, where a median {percent(frozenReuse)} of each checkpoint was reused. "
-            "It also found that the released `hf-xet` 1.6.0 reports inflated dedup and file sizes to its callers, which "
-            "is fixed in xet-core but not yet released.",
+            "- **RL teams syncing weights through a Hub bucket: confidence that the sparse path is worth its code.** "
+            "Xet dedup does not stand in for it. TRL's pull requests for sparse sync "
+            "([#5417](https://github.com/huggingface/trl/pull/5417), "
+            "[#5937](https://github.com/huggingface/trl/pull/5937)) were closed without merging on 2026-09-14, and "
+            "these numbers make the case for landing that work.",
+            "- **Anyone keeping checkpoint history in a bucket: a realistic storage budget.** Enterprise buckets bill on "
+            f"deduplicated bytes, and each new checkpoint of our run adds a median {percent(storedShare)} of its size as "
+            "new chunks (counted before Xet's compression).",
+            "- **Xet and TRL maintainers: a map of where content-defined dedup shines.** It pays when whole regions stay "
+            f"bit-identical: with half the layers frozen, a median {percent(frozenReuse)} of each checkpoint was reused. "
+            "The work also turned up a dedup accounting bug in the released `hf-xet` 1.6.0. It is fixed in xet-core and "
+            "waiting for a release.",
         ]
     )
 

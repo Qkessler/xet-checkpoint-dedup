@@ -170,3 +170,17 @@ Decision: leave the plan's check failing and flag it for the owner. The plan cur
 - `upload(A, A)` check weaker than "shard overhead only": fixed. It now also asserts that shard bytes are above 0 and that transferred bytes equal the shard bytes.
 - `new_bytes` is uncompressed: noted in ADR 0005 and goes under the README limitations.
 - run-b's 36.5% explanation read as "the whole embedding": fixed in the wording.
+
+## 2026-10-04 Step 5: third-party pairs
+
+**Ran.** `just fetch` already holds both Hub pairs. `pairs.sh` now runs `overlap` and `upload` on `ChenJakcy6/Qwen2-0.5B-GRPO-test` steps 110 to 113 and `ajjyy/Qwen2-0.5B-GRPO-attempt1` steps 3150 to 3160. `scripts/hub_reconstruction.py` reproduces the research pass's reconstruction-API rows for both pairs (public reads only: the tree API, an anonymous `xet-read-token`, and `GET /v1/reconstructions`). It writes `results/hub-reconstruction-*.json`.
+
+**Saw: ChenJakcy6 (3 steps apart).** The reconstruction-API row reproduces exactly: 202 of 15,336 chunks of the next file are shared with the base on the Hub, the same as `docs/background/checkpoint-data-sources.md` section 4 (ADR 0003 asks for this one row by hand). Chunking s113 locally with xet-core's `chunk` and `hash -h file` examples gives exactly the Hub's xetHash, so the Hub's chunk boundaries for this file are xet-core's. Locally, chunk overlap is 1.2% and the dedup `upload` accepts is 0.54%. The Hub's 202 shared chunks, which come from whole shared terms of 4.7 MB, land in the same place: defrag prevention refused about half of the overlap in both.
+
+**Saw: ajjyy (10 steps apart), a mismatch that is explained.** On the Hub, s3160 shares 0 chunks with s3150, and its recipe is 15 terms over 15 xorbs that it uses whole, so no dedup happened at upload. Locally, chunk overlap is 11.3% and `upload` accepts 7.3%. Hypotheses:
+
+1. *The Hub chunked this file with a different chunker.* Test: our local Xet file hash of s3160 differs from the Hub's xetHash, and the Hub has 15,859 chunks against our 15,292. **Confirmed.** The file was not chunked by xet-core's current chunker. That fits an upload through the LFS bridge followed by server-side migration, or an older client. The Hub page does not say which, so we cannot pin the path down.
+2. *The upload path never compared against the previous revision.* Whole-xorb terms with no reference to any base xorb (`next_xorbs_also_in_base` is 0) mean no dedup was attempted or found. **Consistent**, but not separable from hypothesis 1 with public data.
+3. *Our 11.3% is an artifact.* Test: the overlap sits almost entirely in the embedding (40% of its bytes reused, 99.996% of its elements unchanged), where only rows of tokens seen in training change. The matrices change in about 0.05% of elements and reuse about 0.2% of their bytes, close to the scattered sweep at that density. Attribution reconciles and the invariants hold. **Rejected.**
+
+Decision: report both the local measurement (what xet-core 1.6.0 would transfer) and the Hub row (what this repo's uploads actually stored), with the chunker mismatch named. Neither changes the verdict. ajjyy transfers about 93% of the anchor locally, which is "does not hold".

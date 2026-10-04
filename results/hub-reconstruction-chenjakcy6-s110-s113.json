@@ -2,7 +2,7 @@
   "name": "hub-reconstruction-chenjakcy6-s110-s113",
   "kind": "hub-reconstruction",
   "tool": {
-    "git_commit": "ce32ad9236e34e9a4a473f15e909c1fed4e0ab88",
+    "git_commit": "1d82ec86152843cbf7bbb7bfe5e6eea61ee73217",
     "script": "scripts/hub_reconstruction.py"
   },
   "inputs": [

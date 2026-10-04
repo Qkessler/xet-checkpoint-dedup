@@ -99,7 +99,7 @@ just report  # redraw charts and regenerate this README's summaries and docs/res
 ```
 
 <!-- BEGIN provenance -->
-Generated from 98 files in `results/`, produced by tool commit(s) b5a70cf, ce32ad9 (0 from a dirty tree), on hf-xet 1.6.0+git.d2f667c, xet-client 1.6.0+git.d2f667c, xet-core-structures 1.6.0+git.d2f667c, xet-data 1.6.0+git.d2f667c, xet-runtime 1.6.0+git.d2f667c.
+Generated from 98 files in `results/`, produced by tool commit(s) 1d82ec8 (0 from a dirty tree), on hf-xet 1.6.0+git.d2f667c, xet-client 1.6.0+git.d2f667c, xet-core-structures 1.6.0+git.d2f667c, xet-data 1.6.0+git.d2f667c, xet-runtime 1.6.0+git.d2f667c.
 <!-- END provenance -->
 
 Plan: [docs/plan.md](docs/plan.md). Lab notebook: [docs/run-log.md](docs/run-log.md). Glossary: [CONTEXT.md](CONTEXT.md).

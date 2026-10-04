@@ -2,7 +2,7 @@
   "name": "upload-run-b-frozen-half-s05-s06",
   "kind": "upload",
   "tool": {
-    "git_commit": "b5a70cf58590981fba4015ef5744bc6900548b7d",
+    "git_commit": "1d82ec86152843cbf7bbb7bfe5e6eea61ee73217",
     "git_dirty": false,
     "crate_versions": {
       "hf-xet": "1.6.0+git.d2f667c",

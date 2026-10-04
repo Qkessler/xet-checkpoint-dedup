@@ -17,7 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-hf-xet = "=1.6.0"
+hf-xet = { git = "https://github.com/huggingface/xet-core", rev = "d2f667cc247a7ae54a2cf93e413f8fee96c3c927" }
 rand = "0.9"
 rand_chacha = "0.9"
 serde = { version = "1", features = ["derive"] }
@@ -26,8 +26,9 @@ sha2 = "0.10"
 tempfile = "3"
 thiserror = "2"
 toml = "0.9"
-xet-core-structures = "=1.6.0"
-xet-data = "=1.6.0"
+xet-core-structures = { git = "https://github.com/huggingface/xet-core", rev = "d2f667cc247a7ae54a2cf93e413f8fee96c3c927" }
+xet-data = { git = "https://github.com/huggingface/xet-core", rev = "d2f667cc247a7ae54a2cf93e413f8fee96c3c927" }
+xet-runtime = { git = "https://github.com/huggingface/xet-core", rev = "d2f667cc247a7ae54a2cf93e413f8fee96c3c927" }
 
 [dev-dependencies]
 proptest = "1"

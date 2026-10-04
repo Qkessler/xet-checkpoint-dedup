@@ -1,5 +1,6 @@
 //! Records the resolved versions of the Xet crates from `Cargo.lock`, so every result file names the exact engine
-//! that produced it.
+//! that produced it. A git dependency is recorded as `<version>+git.<short rev>`, because its version number alone
+//! does not say which commit was built.
 
 use std::fs;
 
@@ -22,7 +23,15 @@ fn main() {
             .and_then(|next| next.strip_prefix("version = \""))
             .and_then(|rest| rest.strip_suffix('"'))
             .expect("Cargo.lock lists version right after name");
-        versions.push(format!("{name}={version}"));
+        let git_rev = lines
+            .next()
+            .and_then(|source| source.strip_prefix("source = \"git+"))
+            .and_then(|rest| rest.rsplit_once('#'))
+            .map(|(_, rev)| rev.trim_end_matches('"').chars().take(7).collect::<String>());
+        match git_rev {
+            Some(rev) => versions.push(format!("{name}={version}+git.{rev}")),
+            None => versions.push(format!("{name}={version}")),
+        }
     }
     println!("cargo:rustc-env=CKPT_DEDUP_CRATE_VERSIONS={}", versions.join(","));
 }

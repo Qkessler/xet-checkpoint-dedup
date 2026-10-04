@@ -232,3 +232,17 @@ Decision: report both the local measurement (what xet-core 1.6.0 would transfer)
 - The telemetry table missed three variables: fixed, all six are listed.
 - The HP-mode buffer column was still constants: fixed. HP mode is derived too (usable / 8, / 32, / 2), with the old constants as ceilings and fallback.
 - The chart 2 caption said scattered tensors "sit on the line": fixed. It now says large tensors, and explains why norms can fall below.
+
+## 2026-10-04 Switch to xet-core at d2f667c (owner request)
+
+**Asked.** The owner wants the numbers from the engine with the fixed dedup accounting.
+
+**Ran.** crates.io has no release after 1.6.0, so the tool now depends on xet-core by git at `d2f667c`, which includes #931 (ADR 0006). Before switching, `diff` of `xet_data/src` between 1.6.0 and `d2f667c` showed that `file_deduplication.rs` changes only where the metrics are incremented. `defrag_prevention.rs` and the chunker are identical. The other differences are telemetry, configuration and download paths.
+
+- `d2f667c` adds client telemetry. Its `emit.rs` returns no sink for local clients, and `upload` also sets `telemetry.enabled = false` in the session config, so no measurement can send anything.
+- `build.rs` now stamps git dependencies as `<version>+git.<rev>`, because `Cargo.lock` still says 1.6.0 for them.
+- `just e2e` gains two assertions per pair: `deduped_bytes == file bytes - new_bytes`, and reported file size == size on disk.
+
+**Prediction, written before the full rerun.** Transferred bytes, chunk overlap and the defrag gap stay byte-identical on every pair. `deduped_bytes` drops to the accepted dedup, and the reported file size drops to the real size. The verdicts do not change.
+
+**Saw on the first pair (run-a steps 10 to 11).** The reported file size equals the size on disk, `deduped_bytes` equals `file bytes - new_bytes`, and transferred bytes and the defrag gap are byte-identical to the 1.6.0 result. Full rerun follows.

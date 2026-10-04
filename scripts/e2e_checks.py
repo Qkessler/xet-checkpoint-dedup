@@ -99,7 +99,9 @@ def oracleChunkOverlap(overlapPath: str, oracleBytes: str):
 
 
 def uploadPair(path: str):
-    """Transferred data bytes are at least next size minus chunk overlap, and the defrag gap is never negative."""
+    """Transferred data bytes are at least next size minus chunk overlap, the defrag gap is never negative, and the
+    dedup accounting is the fixed one (xet-core #931, ADR 0006): deduped_bytes and the reported file size agree with
+    what was actually sent."""
     report = load(path)["result"]
     nextBytes = report["next"]["file_bytes"]
     newBytes = report["next"]["dedup_metrics"]["new_bytes"]
@@ -107,6 +109,11 @@ def uploadPair(path: str):
         fail(f"{path}: new_bytes {newBytes} < next size - chunk overlap {nextBytes - report['chunk_overlap_bytes']}")
     if report["defrag_gap_bytes"] < 0:
         fail(f"{path}: defrag gap {report['defrag_gap_bytes']} is negative")
+    metrics = report["next"]["dedup_metrics"]
+    if metrics["deduped_bytes"] != report["accepted_dedup_bytes"]:
+        fail(f"{path}: deduped_bytes {metrics['deduped_bytes']} != file bytes - new_bytes {report['accepted_dedup_bytes']}")
+    if report["next"]["reported_file_bytes"] != nextBytes:
+        fail(f"{path}: reported file size {report['next']['reported_file_bytes']} != {nextBytes} on disk")
     print(f"ok upload {path}")
 
 

@@ -4,18 +4,21 @@
 //! The base is committed first, then the next checkpoint is committed to the same store from the same session, so
 //! the next file dedups against the base's shard. `DeduplicationMetrics` come straight from the commit reports.
 //!
-//! `hf-xet` / `xet-data` 1.6.0 add a dedup match to `deduped_bytes` before defrag prevention decides whether to take
-//! it, and then count the refused chunks again as new (fixed in xet-core after 1.6.0, see #931 and the clone at
-//! `d2f667c`). So `deduped_bytes` overstates the dedup taken, and the reported file size exceeds the real one by
-//! `defrag_prevented_dedup_bytes`. Every chunk is either new or deduped, so the dedup actually taken is
-//! `file bytes - new_bytes` in any version. The derived fields use that (ADR 0005).
+//! The crates.io 1.6.0 release added a dedup match to `deduped_bytes` before defrag prevention decided whether to take
+//! it, and then counted the refused chunks again as new. xet-core #931 fixed that, and this tool builds on xet-core
+//! at `d2f667c`, which includes the fix (ADR 0006). Every chunk is either new or deduped, so the dedup actually taken
+//! is `file bytes - new_bytes` in any version; the derived fields use that (ADR 0005), and the outer loop checks that
+//! the fixed `deduped_bytes` and reported file size now agree with it.
+//!
+//! The session disables client telemetry, so a measurement never sends anything over the network, even though
+//! xet-core already emits no telemetry for `local://` stores.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use xet::XetError;
-use xet::xet_session::{DeduplicationMetrics, Sha256Policy, XetSessionBuilder};
+use xet::xet_session::{DeduplicationMetrics, Sha256Policy, XetConfig, XetSessionBuilder};
 
 use crate::chunking::{chunk_file, hash_set};
 
@@ -28,6 +31,8 @@ pub enum UploadError {
     Read { path: PathBuf, source: std::io::Error },
     #[error("Xet session: {0}")]
     Xet(#[from] XetError),
+    #[error("Xet config: {0}")]
+    Config(#[from] xet_runtime::config::ConfigError),
     #[error("upload reported {new_bytes} new bytes for a {file_bytes}-byte file")]
     NewBytesExceedFile { new_bytes: u64, file_bytes: u64 },
 }
@@ -37,8 +42,8 @@ pub enum UploadError {
 pub struct CommitMetrics {
     /// Size of the file on disk.
     pub file_bytes: u64,
-    /// Size the upload path reports for the file. In 1.6.0 it is `total_bytes`, which counts defrag-refused
-    /// matches twice, so it can exceed `file_bytes`.
+    /// Size the upload path reports for the file. Equal to `file_bytes` once the accounting is fixed (xet-core #931);
+    /// in crates.io 1.6.0 it exceeded `file_bytes` by `defrag_prevented_dedup_bytes`.
     pub reported_file_bytes: Option<u64>,
     pub dedup_metrics: DeduplicationMetrics,
 }
@@ -60,7 +65,8 @@ pub struct UploadReport {
     /// `chunk_overlap_bytes - accepted_dedup_bytes`: overlap the upload path re-sent anyway. Signed, because
     /// internal repeats can in principle push accepted dedup above the overlap.
     pub defrag_gap_bytes: i64,
-    /// `chunk_overlap_bytes - deduped_bytes` with the raw 1.6.0 metric, kept to show the accounting difference.
+    /// `chunk_overlap_bytes - deduped_bytes` with the raw metric. Equal to `defrag_gap_bytes` once the accounting is
+    /// fixed; kept so a regression in the accounting shows up.
     pub raw_defrag_gap_bytes: i64,
 }
 
@@ -85,7 +91,8 @@ pub fn measure_upload(
             source,
         })?;
     let endpoint = format!("local://{}", store.path().join("cas").display());
-    let session = XetSessionBuilder::new().build()?;
+    let config = XetConfig::new().with_config("telemetry.enabled", false)?;
+    let session = XetSessionBuilder::new_with_config(config).build()?;
     let commit_one = |path: &Path| -> Result<CommitMetrics, UploadError> {
         let commit = session.new_upload_commit()?.with_endpoint(&endpoint).build_blocking()?;
         let handle = commit.upload_from_path_blocking(path.to_path_buf(), Sha256Policy::Skip)?;

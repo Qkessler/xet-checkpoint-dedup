@@ -2,7 +2,7 @@
   "name": "hub-reconstruction-ajjyy-s3150-s3160",
   "kind": "hub-reconstruction",
   "tool": {
-    "git_commit": "1d82ec86152843cbf7bbb7bfe5e6eea61ee73217",
+    "git_commit": "21584b50bb5858f2e75eb2c547b2ba086c67f920",
     "script": "scripts/hub_reconstruction.py"
   },
   "inputs": [

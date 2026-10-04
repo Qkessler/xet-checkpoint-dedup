@@ -100,4 +100,4 @@ Mean chunk 64,560 bytes, so 32,280 bf16 elements per chunk; 5 seeds per cell. Ag
 
 The Hub columns come from the CAS reconstruction API (`scripts/hub_reconstruction.py`). The ChenJakcy6 file's chunking on the Hub matches xet-core's (same Xet file hash); the ajjyy file was chunked differently on the Hub and shows no dedup at all, so its Hub row is not comparable to the local measurement.
 
-Generated from 98 files in `results/`, produced by tool commit(s) 1d82ec8 (0 from a dirty tree), on hf-xet 1.6.0+git.d2f667c, xet-client 1.6.0+git.d2f667c, xet-core-structures 1.6.0+git.d2f667c, xet-data 1.6.0+git.d2f667c, xet-runtime 1.6.0+git.d2f667c.
+Generated from 98 files in `results/`, produced by tool commit(s) 21584b5 (0 from a dirty tree), on hf-xet 1.6.0+git.d2f667c, xet-client 1.6.0+git.d2f667c, xet-core-structures 1.6.0+git.d2f667c, xet-data 1.6.0+git.d2f667c, xet-runtime 1.6.0+git.d2f667c.

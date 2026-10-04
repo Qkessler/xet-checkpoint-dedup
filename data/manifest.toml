@@ -57,3 +57,315 @@ repo_id = "ajjyy/Qwen2-0.5B-GRPO-attempt1"
 revision = "8ac61c6bd32df293c1c7fd1dc3057b2407449dcc"
 file = "model.safetensors"
 sha256 = "fbfe0eded5dff18ee7420d230281b52e3df5c9bbe61686ef3d0616f00d5f1d95"
+
+
+
+# BEGIN run run-a (written by scripts/train_grpo.py)
+[runs.run-a]
+model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+model_revision = "7ae557604adf67be50417f59c2c2f167def9a775"
+seed = 0
+steps = 21
+learning_rate = 1e-06
+freeze_first_layers = 0
+optimizer = "adamw_torch_fused"
+lr_scheduler_type = "constant"
+weight_decay = 0.0
+beta = 0.0
+num_generations = 4
+per_device_train_batch_size = 4
+max_completion_length = 48
+master_weights = "fp32"
+checkpoint_dtype = "bf16"
+adam_beta1 = 0.9
+adam_beta2 = 0.999
+adam_epsilon = 1e-08
+max_grad_norm = 1.0
+gradient_checkpointing = true
+loss_type = "dapo"
+temperature = 1.0
+torch_threads = 32
+step_seconds = [5.0, 4.5, 3.1, 4.5, 2.8, 2.7, 2.0, 3.3, 1.8, 2.4, 1.8, 1.8, 1.8, 1.7, 2.0, 2.1, 2.1, 2.2, 2.6, 2.3, 2.2]
+
+[runs.run-a.library_versions]
+torch = "2.14.1+cpu"
+transformers = "5.18.0"
+trl = "1.14.1"
+datasets = "5.0.1"
+accelerate = "1.15.0"
+safetensors = "0.8.0"
+
+[inputs.run-a-step-00000]
+kind = "generated"
+run = "run-a"
+file = "step_00000.safetensors"
+path = "runs/run-a/step_00000.safetensors"
+sha256 = "fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe"
+
+[inputs.run-a-step-00001]
+kind = "generated"
+run = "run-a"
+file = "step_00001.safetensors"
+path = "runs/run-a/step_00001.safetensors"
+sha256 = "8dbd40751e487060079b5b04729cebd4ad42011510d28125f04bd20068ff433b"
+
+[inputs.run-a-step-00002]
+kind = "generated"
+run = "run-a"
+file = "step_00002.safetensors"
+path = "runs/run-a/step_00002.safetensors"
+sha256 = "9aa25aaa7a6c0cfcf62cbf4eb19dbb8949ddb0902425d42864cb0490767765b9"
+
+[inputs.run-a-step-00003]
+kind = "generated"
+run = "run-a"
+file = "step_00003.safetensors"
+path = "runs/run-a/step_00003.safetensors"
+sha256 = "5725a587a84a4fe691fb65b2fda0c7f18c5db9c603cd3c2f7c6d7734bfba37a0"
+
+[inputs.run-a-step-00004]
+kind = "generated"
+run = "run-a"
+file = "step_00004.safetensors"
+path = "runs/run-a/step_00004.safetensors"
+sha256 = "41bf91ec18808afd0a481b6d92ab94c1f4f1f9fa75ff03cc8459bc13d97c7024"
+
+[inputs.run-a-step-00005]
+kind = "generated"
+run = "run-a"
+file = "step_00005.safetensors"
+path = "runs/run-a/step_00005.safetensors"
+sha256 = "95c7ba609302089f290df1030822b0fe5a18a39be22a1e791f6ff3537f0b72e0"
+
+[inputs.run-a-step-00006]
+kind = "generated"
+run = "run-a"
+file = "step_00006.safetensors"
+path = "runs/run-a/step_00006.safetensors"
+sha256 = "f7bdacbd210484e0e841b7903c399e00a472c7ca6b363994a1503bbdd23f9cae"
+
+[inputs.run-a-step-00007]
+kind = "generated"
+run = "run-a"
+file = "step_00007.safetensors"
+path = "runs/run-a/step_00007.safetensors"
+sha256 = "496fb6e97711ca6bcb2eb6f1718b6e8246e9ea1e517b7b8a1ba07cc4f217042e"
+
+[inputs.run-a-step-00008]
+kind = "generated"
+run = "run-a"
+file = "step_00008.safetensors"
+path = "runs/run-a/step_00008.safetensors"
+sha256 = "004fe5b632c46e55a6b9b6800651450385b6d0ac70122acd9c719fb7fc4fed3d"
+
+[inputs.run-a-step-00009]
+kind = "generated"
+run = "run-a"
+file = "step_00009.safetensors"
+path = "runs/run-a/step_00009.safetensors"
+sha256 = "1e5580be60f31a15ce5e4c0740375d8015c6cbe14433c70884313d5d837ec89b"
+
+[inputs.run-a-step-00010]
+kind = "generated"
+run = "run-a"
+file = "step_00010.safetensors"
+path = "runs/run-a/step_00010.safetensors"
+sha256 = "838c090a4bcbf2bfc5a701b7fcaacb9160866ff23fcbd321cd430779de07c8df"
+
+[inputs.run-a-step-00011]
+kind = "generated"
+run = "run-a"
+file = "step_00011.safetensors"
+path = "runs/run-a/step_00011.safetensors"
+sha256 = "375b15920dd5707fb1067ff70560f9d679362c45f4bebb8c4a5f5de3dd4e62af"
+
+[inputs.run-a-step-00012]
+kind = "generated"
+run = "run-a"
+file = "step_00012.safetensors"
+path = "runs/run-a/step_00012.safetensors"
+sha256 = "4e42381f8ddac0e6e6f7a479d3dd51dd7890c6d6d9eedb5c12f5616bdea86632"
+
+[inputs.run-a-step-00013]
+kind = "generated"
+run = "run-a"
+file = "step_00013.safetensors"
+path = "runs/run-a/step_00013.safetensors"
+sha256 = "b2353a7c9989e08c5fe65d92001af198ca61bbf6f185fe526f73c6b088a3134a"
+
+[inputs.run-a-step-00014]
+kind = "generated"
+run = "run-a"
+file = "step_00014.safetensors"
+path = "runs/run-a/step_00014.safetensors"
+sha256 = "048bdd89a52969a05db5d8477a41b576dff329f1e5155242552baf6a40eb4345"
+
+[inputs.run-a-step-00015]
+kind = "generated"
+run = "run-a"
+file = "step_00015.safetensors"
+path = "runs/run-a/step_00015.safetensors"
+sha256 = "f7c1a2ca0e1cf5e6b7bed4d897aeeb7bee85b8162bee51a712376ba5a67b33d7"
+
+[inputs.run-a-step-00016]
+kind = "generated"
+run = "run-a"
+file = "step_00016.safetensors"
+path = "runs/run-a/step_00016.safetensors"
+sha256 = "a788b4395eb7c8594f2bbea72ec6a12e9f2e301defcba9046d210062700198ad"
+
+[inputs.run-a-step-00017]
+kind = "generated"
+run = "run-a"
+file = "step_00017.safetensors"
+path = "runs/run-a/step_00017.safetensors"
+sha256 = "57547a8db51dd58776a3a669756aa059d9972d244baf658d9b6afc38e43dab36"
+
+[inputs.run-a-step-00018]
+kind = "generated"
+run = "run-a"
+file = "step_00018.safetensors"
+path = "runs/run-a/step_00018.safetensors"
+sha256 = "e7c1c7456ad6f8cff59d79047a3adbde6dd6dee2aac1d5e34827230dbaa9cb55"
+
+[inputs.run-a-step-00019]
+kind = "generated"
+run = "run-a"
+file = "step_00019.safetensors"
+path = "runs/run-a/step_00019.safetensors"
+sha256 = "9869daa5d210c800965836b3e8f0bc0eba51a3b6377cc3347381bece081e7578"
+
+[inputs.run-a-step-00020]
+kind = "generated"
+run = "run-a"
+file = "step_00020.safetensors"
+path = "runs/run-a/step_00020.safetensors"
+sha256 = "d9a7079dffa7fc252d9d6cf5874d03f61b8b80fa7897e832a07a00fa645735bd"
+
+[inputs.run-a-step-00021]
+kind = "generated"
+run = "run-a"
+file = "step_00021.safetensors"
+path = "runs/run-a/step_00021.safetensors"
+sha256 = "21f64aca2b64918bb27e3365ac9d234c0e2b3e80e01cfadad598b4c33012061d"
+# END run run-a
+
+# BEGIN run run-b-frozen-half (written by scripts/train_grpo.py)
+[runs.run-b-frozen-half]
+model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+model_revision = "7ae557604adf67be50417f59c2c2f167def9a775"
+seed = 0
+steps = 11
+learning_rate = 1e-06
+freeze_first_layers = 12
+optimizer = "adamw_torch_fused"
+lr_scheduler_type = "constant"
+weight_decay = 0.0
+beta = 0.0
+num_generations = 4
+per_device_train_batch_size = 4
+max_completion_length = 48
+master_weights = "fp32"
+checkpoint_dtype = "bf16"
+adam_beta1 = 0.9
+adam_beta2 = 0.999
+adam_epsilon = 1e-08
+max_grad_norm = 1.0
+gradient_checkpointing = true
+loss_type = "dapo"
+temperature = 1.0
+torch_threads = 32
+step_seconds = [4.4, 4.3, 4.3, 4.5, 4.7, 4.8, 6.5, 4.4, 4.3, 4.5, 4.5]
+
+[runs.run-b-frozen-half.library_versions]
+torch = "2.14.1+cpu"
+transformers = "5.18.0"
+trl = "1.14.1"
+datasets = "5.0.1"
+accelerate = "1.15.0"
+safetensors = "0.8.0"
+
+[inputs.run-b-frozen-half-step-00000]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00000.safetensors"
+path = "runs/run-b-frozen-half/step_00000.safetensors"
+sha256 = "fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe"
+
+[inputs.run-b-frozen-half-step-00001]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00001.safetensors"
+path = "runs/run-b-frozen-half/step_00001.safetensors"
+sha256 = "3302541e10b2bf8013889cd0837c1ab393dc1247183f15dc11aab8b77b1e22af"
+
+[inputs.run-b-frozen-half-step-00002]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00002.safetensors"
+path = "runs/run-b-frozen-half/step_00002.safetensors"
+sha256 = "57a208aff9b5355930f1c4295c57e4d4041a351f973c622e56a34b5fed2a02e5"
+
+[inputs.run-b-frozen-half-step-00003]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00003.safetensors"
+path = "runs/run-b-frozen-half/step_00003.safetensors"
+sha256 = "2bdee4d76db8ee8ef57a818a7a4c256369ae646c53cafcf623f49de3cd925abc"
+
+[inputs.run-b-frozen-half-step-00004]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00004.safetensors"
+path = "runs/run-b-frozen-half/step_00004.safetensors"
+sha256 = "b9405ccb4dbaa30934b33a886bff1724452fc4f2d881440ffdadea788c942aa2"
+
+[inputs.run-b-frozen-half-step-00005]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00005.safetensors"
+path = "runs/run-b-frozen-half/step_00005.safetensors"
+sha256 = "1576bebe640ce01c5e1b911d35c085fe346cb8f32b99b73ea6a86b6bd9adb7f0"
+
+[inputs.run-b-frozen-half-step-00006]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00006.safetensors"
+path = "runs/run-b-frozen-half/step_00006.safetensors"
+sha256 = "f1e3c7ca97db9358ee75a1fcfa946dcb54f58e3c3b3abf0df15d085003e8e927"
+
+[inputs.run-b-frozen-half-step-00007]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00007.safetensors"
+path = "runs/run-b-frozen-half/step_00007.safetensors"
+sha256 = "f4dc974f6aa6863f76f0299c39431d76037827295e9b8b9c6400c0e985c7c4f5"
+
+[inputs.run-b-frozen-half-step-00008]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00008.safetensors"
+path = "runs/run-b-frozen-half/step_00008.safetensors"
+sha256 = "7336fa40f3730e6624838351051e340290fffc19eff350f813fecfb9689eb8ca"
+
+[inputs.run-b-frozen-half-step-00009]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00009.safetensors"
+path = "runs/run-b-frozen-half/step_00009.safetensors"
+sha256 = "9dc0bf574dbc8cf97278ddc47a9d763c72faae993dd7ff7677eb0459875f6e6b"
+
+[inputs.run-b-frozen-half-step-00010]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00010.safetensors"
+path = "runs/run-b-frozen-half/step_00010.safetensors"
+sha256 = "983868ec6ae94e828c157f00ad2945e28e44832b77347106affd9979e1bbf103"
+
+[inputs.run-b-frozen-half-step-00011]
+kind = "generated"
+run = "run-b-frozen-half"
+file = "step_00011.safetensors"
+path = "runs/run-b-frozen-half/step_00011.safetensors"
+sha256 = "63549e4b962bfdf396a3d21c02343062c90b9621bf19b73ecb43145b58f4bc1d"
+# END run run-b-frozen-half

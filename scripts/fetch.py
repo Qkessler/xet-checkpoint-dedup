@@ -27,7 +27,7 @@ def main() -> int:
     manifest = tomllib.loads(manifestPath.read_text())
     failures = []
     for key, entry in manifest["inputs"].items():
-        target = cacheRoot / "inputs" / key / entry["file"]
+        target = cacheRoot / entry["path"] if "path" in entry else cacheRoot / "inputs" / key / entry["file"]
         if entry["kind"] == "hub" and not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             downloaded = hf_hub_download(

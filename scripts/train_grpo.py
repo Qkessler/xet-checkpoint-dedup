@@ -1,9 +1,9 @@
 """Generate a GRPO training run on CPU with a bf16 checkpoint after every optimizer step.
 
 Setup from docs/background/checkpoint-data-sources.md section 5: Qwen2.5-0.5B-Instruct, TRL GRPO, AdamW, lr 1e-6,
-constant schedule, weight decay 0, beta 0, fp32 master weights. Each snapshot is the bf16 cast of the fp32 weights,
-which is what an inference engine would receive. Qwen2.5-0.5B ties `lm_head` to `embed_tokens`, so the snapshot
-drops `lm_head.weight`, the same way the published checkpoint does.
+constant schedule, weight decay 0, beta 0, fp32 master weights. Each checkpoint is the bf16 cast of the fp32 weights,
+which is what an inference engine would receive. Qwen2.5-0.5B ties `lm_head` to `embed_tokens`, so the checkpoint
+drops `lm_head.weight`, the same way the published checkpoint does, and step 0 is byte-identical to it.
 
 Writes ~/.cache/xet-checkpoint-dedup/runs/<run>/step_NNNNN.safetensors and run.json, and records the run's config,
 seed, library versions and per-step sha256s in data/manifest.toml between BEGIN/END markers.
@@ -43,13 +43,13 @@ def fileSha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-class Bf16SnapshotCallback(TrainerCallback):
+class Bf16CheckpointCallback(TrainerCallback):
     def __init__(self, runDir: Path):
         self.runDir = runDir
         self.stepSeconds = []
         self.lastStepEnd = None
 
-    def snapshot(self, model, step: int):
+    def saveCheckpoint(self, model, step: int):
         stateDict = {name: tensor.detach().to(torch.bfloat16).contiguous() for name, tensor in model.state_dict().items()}
         if model.config.tie_word_embeddings:
             stateDict.pop("lm_head.weight", None)
@@ -63,8 +63,24 @@ class Bf16SnapshotCallback(TrainerCallback):
         now = time.monotonic()
         self.stepSeconds.append(now - self.lastStepEnd)
         print(f"step {state.global_step} took {self.stepSeconds[-1]:.1f} s", flush=True)
-        self.snapshot(model, state.global_step)
+        self.saveCheckpoint(model, state.global_step)
         self.lastStepEnd = time.monotonic()
+
+
+def manifestBlockPattern(runName: str) -> re.Pattern:
+    return re.compile(rf"\n# BEGIN run {re.escape(runName)} .*?# END run {re.escape(runName)}\n", re.S)
+
+
+def forgetRun(runName: str):
+    manifestPath.write_text(manifestBlockPattern(runName).sub("\n", manifestPath.read_text()).rstrip("\n") + "\n")
+
+
+def tomlValue(value) -> str:
+    if isinstance(value, (bool, int, float, str)) or (
+        isinstance(value, list) and all(isinstance(item, (int, float, str)) for item in value)
+    ):
+        return json.dumps(value)
+    raise ValueError(f"cannot write {value!r} as a TOML value")
 
 
 def recordInManifest(runName: str, runRecord: dict, stepFiles: list[Path]):
@@ -72,10 +88,10 @@ def recordInManifest(runName: str, runRecord: dict, stepFiles: list[Path]):
     tables = {key: value for key, value in runRecord.items() if isinstance(value, dict)}
     for key, value in runRecord.items():
         if key not in tables:
-            lines.append(f"{key} = {json.dumps(value)}")
+            lines.append(f"{key} = {tomlValue(value)}")
     for tableName, table in tables.items():
         lines.append(f"\n[runs.{runName}.{tableName}]")
-        lines += [f"{key} = {json.dumps(value)}" for key, value in table.items()]
+        lines += [f"{key} = {tomlValue(value)}" for key, value in table.items()]
     for stepFile in stepFiles:
         lines += [
             "",
@@ -88,10 +104,8 @@ def recordInManifest(runName: str, runRecord: dict, stepFiles: list[Path]):
         ]
     lines.append(f"# END run {runName}")
     block = "\n".join(lines) + "\n"
-    manifest = manifestPath.read_text()
-    pattern = re.compile(rf"\n# BEGIN run {re.escape(runName)} .*?# END run {re.escape(runName)}\n", re.S)
-    manifest = pattern.sub("", manifest)
-    manifestPath.write_text(manifest.rstrip("\n") + "\n\n" + block)
+    forgetRun(runName)
+    manifestPath.write_text(manifestPath.read_text().rstrip("\n") + "\n\n" + block)
 
 
 def main():
@@ -107,6 +121,7 @@ def main():
     set_seed(args.seed)
     runDir = cacheRoot / "runs" / args.run
     runDir.mkdir(parents=True, exist_ok=True)
+    forgetRun(args.run)
     for stale in runDir.glob("step_*.safetensors"):
         stale.unlink()
 
@@ -138,16 +153,16 @@ def main():
         logging_steps=1,
         report_to="none",
     )
-    snapshots = Bf16SnapshotCallback(runDir)
+    checkpoints = Bf16CheckpointCallback(runDir)
     trainer = GRPOTrainer(
         model=model,
         processing_class=tokenizer,
         reward_funcs=lengthReward,
         args=config,
         train_dataset=prompts,
-        callbacks=[snapshots],
+        callbacks=[checkpoints],
     )
-    snapshots.snapshot(trainer.model, 0)
+    checkpoints.saveCheckpoint(trainer.model, 0)
     trainer.train()
 
     runRecord = {
@@ -167,7 +182,15 @@ def main():
         "master_weights": "fp32",
         "checkpoint_dtype": "bf16",
         "library_versions": {library: version(library) for library in libraries},
-        "step_seconds": [round(seconds, 1) for seconds in snapshots.stepSeconds],
+        "adam_beta1": config.adam_beta1,
+        "adam_beta2": config.adam_beta2,
+        "adam_epsilon": config.adam_epsilon,
+        "max_grad_norm": config.max_grad_norm,
+        "gradient_checkpointing": config.gradient_checkpointing,
+        "loss_type": config.loss_type,
+        "temperature": config.temperature,
+        "torch_threads": torch.get_num_threads(),
+        "step_seconds": [round(seconds, 1) for seconds in checkpoints.stepSeconds],
     }
     (runDir / "run.json").write_text(json.dumps(runRecord, indent=2) + "\n")
     recordInManifest(args.run, runRecord, sorted(runDir.glob("step_*.safetensors")))

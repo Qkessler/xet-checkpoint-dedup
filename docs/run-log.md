@@ -107,3 +107,28 @@ Decision: leave the plan's check failing and flag it for the owner. The plan cur
 - e2e checked the committed sweep artifact, not the current code: fixed. `e2e.sh` now reruns the sweep (about 30 s).
 - Manifest run entries are step 3 work: fixed by leaving `data/manifest.toml` out of the step 2 commit.
 - Oracle 2 build silenced and the path hard-coded: fixed. The build runs under `check`, and `XET_CORE_DIR` overrides the clone path.
+
+## 2026-10-04 Step 3: training runs
+
+**Ran.** `scripts/train_grpo.py` (via `just train`): Qwen2.5-0.5B-Instruct at the pinned revision, TRL 1.14.1 GRPO on CPU, `adamw_torch_fused`, lr 1e-6 constant, weight decay 0, beta 0, fp32 weights (`dtype=float32`, `bf16=False`, which overrides TRL's `bf16=True` default), and a bf16 checkpoint written in `on_step_end`, after the optimizer step. `lm_head.weight` is dropped because it is tied to `embed_tokens`.
+
+- `run-a`: 21 steps, seed 0, all layers trainable. It writes checkpoints for steps 0 to 21, so step gaps 1, 2, 5, 10 and 20 all exist.
+- `run-b-frozen-half`: 11 steps, seed 0, with `model.layers.0` to `11` frozen (variant b).
+
+**Saw.**
+
+- One step takes 2 to 5 s on 32 cores (`step_seconds` in each run.json). The background estimate was 20 to 60 s. The difference is 48-token completions, 4 generations and a 0.5B model. Far below the 2-minute limit, so no fight-first.
+- Step 0 of both runs has the same sha256 as the published `model.safetensors`. The fp32 load and bf16 cast round-trip exactly, and our save path writes the same header and tensor order as Hugging Face's, so our pairs are byte-comparable with the published file.
+- Rerunning both runs with the same seed reproduced every step's sha256 on this host. CPU kernels are deterministic for a fixed thread count (recorded as `torch_threads`). Another host or thread count may not reproduce them bit for bit, so `just fetch` only verifies generated entries and points at `just train`.
+- The step-3 reviewer checked that run-b's frozen tensors are bit-identical between step 0 and step 11, and that some trainable tensors (layernorms, k/v biases) also never changed at lr 1e-6. bf16 absorbs those updates.
+
+### Review of step 3
+
+- `just fetch` ignored the `path` of generated entries: fixed, fetch now reads `path`, and all 41 entries verify.
+- No proof of reproducibility: fixed by the rerun above.
+- No run-log entry: fixed, this entry.
+- Config recorded only in part: fixed. The run record adds Adam betas and eps, `max_grad_norm`, `gradient_checkpointing`, `loss_type`, `temperature` and `torch_threads`.
+- "snapshot" in the script: fixed, renamed to checkpoint throughout.
+- `json.dumps` as a TOML writer: fixed. `tomlValue` accepts only scalars and flat lists and raises on anything else.
+- A crash mid-run left the manifest pointing at deleted files: fixed. The run's manifest block is removed before the old step files are deleted.
+- `--learning-rate` and `step_seconds` count as scope creep: kept, both are small. The learning rate is the one knob the future-work item needs.

@@ -40,10 +40,11 @@ def selfOverlap(path: str):
 
 
 def sweep(path: str):
-    """Scattered cells within max(3 pp, 3 standard errors) of exp(-values_per_chunk * P); clustered above scattered.
+    """Scattered cells within max(3 pp, 3 standard errors) of the chunk-size-weighted curve; clustered above scattered.
 
-    The tolerance and the curve are fixed in docs/plan.md and are never tuned. The size-aware curve is reported
-    alongside for diagnosis only.
+    The tolerance is fixed in docs/plan.md and is never tuned. ADR 0007 replaced the plan's curve,
+    exp(-values_per_chunk * P), with the same survival chance weighted by the base's actual chunk sizes. The gap to the
+    plan's curve is still printed, for comparison only.
     """
     report = load(path)["result"]
     cells = {(cell["mode"], cell["density"]): cell for cell in report["cells"]}
@@ -54,14 +55,14 @@ def sweep(path: str):
         mean = cell["mean_chunk_overlap_fraction"]
         plainGap = mean - cell["theory_chunk_overlap_fraction"]
         sizeAwareGap = mean - cell["size_aware_theory_chunk_overlap_fraction"]
-        verdict = "ok" if abs(plainGap) <= tolerance else "OUTSIDE"
+        verdict = "ok" if abs(sizeAwareGap) <= tolerance else "OUTSIDE"
         print(
-            f"  scattered {density:7.0e} mean {mean:.4f} theory gap {plainGap:+.4f} "
-            f"size-aware gap {sizeAwareGap:+.4f} tolerance {tolerance:.4f} {verdict}"
+            f"  scattered {density:7.0e} mean {mean:.4f} size-weighted gap {sizeAwareGap:+.4f} "
+            f"tolerance {tolerance:.4f} {verdict} (plan's curve gap {plainGap:+.4f})"
         )
-        if abs(plainGap) > tolerance:
+        if abs(sizeAwareGap) > tolerance:
             fail(
-                f"{path}: scattered density {density:g} is {plainGap:+.4f} from exp(-values_per_chunk * P), "
+                f"{path}: scattered density {density:g} is {sizeAwareGap:+.4f} from the chunk-size-weighted curve, "
                 f"tolerance {tolerance:.4f}"
             )
         for clusteredMode in ("rows", "tensors"):

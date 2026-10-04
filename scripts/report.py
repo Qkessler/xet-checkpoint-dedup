@@ -59,7 +59,7 @@ def drawSweepChart(sweep: dict, path: Path):
         color=textSecondary,
         linewidth=1.5,
         linestyle="--",
-        label="theory: exp(-values_per_chunk x P)",
+        label="plan's pre-registered curve: exp(-values_per_chunk x P)",
     )
     axes.plot(
         theory["density"],
@@ -68,7 +68,7 @@ def drawSweepChart(sweep: dict, path: Path):
         linewidth=1,
         linestyle=":",
         zorder=4,
-        label="theory, weighted by actual chunk sizes",
+        label="theory weighted by actual chunk sizes (checked, ADR 0007)",
     )
     for mode, color in modeColors.items():
         modeCells = cells.filter(pl.col("mode") == mode).sort("density")
@@ -320,19 +320,17 @@ def sweepBlock(sweep: dict) -> str:
         return percent(cell["mean_chunk_overlap_fraction"])
 
     scattered = [cell for cell in cells if cell["mode"] == "scattered"]
-    outside = [
-        cell
-        for cell in scattered
-        if abs(cell["mean_chunk_overlap_fraction"] - cell["theory_chunk_overlap_fraction"])
-        > max(0.03, 3 * cell["standard_error"])
-    ]
-    sizeAwareWorst = max(
-        abs(cell["mean_chunk_overlap_fraction"] - cell["size_aware_theory_chunk_overlap_fraction"])
-        for cell in scattered
-    )
-    plainWorst = max(
-        abs(cell["mean_chunk_overlap_fraction"] - cell["theory_chunk_overlap_fraction"]) for cell in scattered
-    )
+
+    def outsideTolerance(curveKey: str) -> int:
+        return sum(
+            1
+            for cell in scattered
+            if abs(cell["mean_chunk_overlap_fraction"] - cell[curveKey]) > max(0.03, 3 * cell["standard_error"])
+        )
+
+    def worstGap(curveKey: str) -> float:
+        return max(abs(cell["mean_chunk_overlap_fraction"] - cell[curveKey]) for cell in scattered)
+
     seeds = len(report["plan"]["seeds"])
     return "\n".join(
         [
@@ -344,9 +342,12 @@ def sweepBlock(sweep: dict) -> str:
             f"| first density with overlap under 1% | {firstDensityBelow('scattered', 0.01)} | {firstDensityBelow('rows', 0.01)} | {firstDensityBelow('tensors', 0.01)} |",
             "",
             f"Mean chunk {report['base_mean_chunk_bytes']:,.0f} bytes, so {report['values_per_chunk']:,.0f} bf16 elements per chunk; "
-            f"{seeds} seeds per cell. The pre-registered curve `exp(-values_per_chunk x P)` misses the scattered points by up to "
-            f"{100 * plainWorst:.1f} percentage points, and {len(outside)} of {len(scattered)} scattered cells fall outside its fixed "
-            f"tolerance. The same chance weighted by the actual chunk sizes misses by at most {100 * sizeAwareWorst:.2f} points (see Surprises).",
+            f"{seeds} seeds per cell. Against the checked curve, the chance a chunk has no change weighted by the actual chunk "
+            f"sizes (ADR 0007), the scattered points miss by at most {100 * worstGap('size_aware_theory_chunk_overlap_fraction'):.2f} "
+            f"percentage points, and {outsideTolerance('size_aware_theory_chunk_overlap_fraction')} of {len(scattered)} cells fall "
+            f"outside the fixed tolerance. The plan's pre-registered curve `exp(-values_per_chunk x P)` misses by up to "
+            f"{100 * worstGap('theory_chunk_overlap_fraction'):.1f} points, with "
+            f"{outsideTolerance('theory_chunk_overlap_fraction')} of {len(scattered)} cells outside (see Surprises).",
         ]
     )
 

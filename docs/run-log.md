@@ -8,14 +8,14 @@ Session link: not generated. Uploading a session export writes to the network, w
 
 **Surprising results, flagged:**
 
-1. **A pre-registered check fails, and it is left failing.** The scattered sweep falls outside the fixed `exp(-values_per_chunk x P)` tolerance in 4 of 16 cells (step 2 entry). The cause is chunk-size variation, and a size-weighted curve matches within a quarter of a point. `just e2e` is therefore red on that one check, and every other invariant and oracle is green.
-2. **`hf-xet` 1.6.0 over-reports dedup and file size** when defrag prevention refuses a match (step 4 entry, ADR 0005). The fix is in xet-core after 1.6.0.
+1. **A pre-registered check failed, and the owner approved replacing its curve.** The scattered sweep fell outside the fixed `exp(-values_per_chunk x P)` tolerance in 4 of 16 cells (step 2 entry). The cause is chunk-size variation. With the owner's approval, the check now uses the chunk-size-weighted curve with the same tolerance (ADR 0007), and `just e2e` is green. That curve was chosen after seeing the data, which the README states.
+2. **The crates.io `hf-xet` 1.6.0 release over-reports dedup and file size** when defrag prevention refuses a match (step 4 entry, ADR 0005). At the owner's request, the tool now builds on xet-core `d2f667c`, which has the fix (ADR 0006). Every pair was measured again, and bytes sent were byte-identical.
 3. **The ajjyy pair's Hub row (0 shared chunks) is not comparable** to a local xet-core upload, because the Hub chunked that file differently (step 5 entry).
 
 **Needs the owner's judgement:**
 
-- Whether to replace the plan's theory curve with the size-weighted one, which would turn `just e2e` green with the same tolerance. The plan fixed the curve in advance, so I did not change it.
-- Whether ADR 0005's accepted-dedup definition of the defrag gap is acceptable in place of the plan's `chunk overlap - deduped_bytes`.
+- Resolved: the theory curve (ADR 0007) and the engine version (ADR 0006), both decided by the owner. On the fixed engine, ADR 0005's accepted dedup and the plan's `chunk overlap - deduped_bytes` agree, and `just e2e` checks that.
+- When xet-core publishes a release with the accounting fix, switch back from the git dependency (ADR 0006).
 - Whether and where to send the docs-drift patches in `docs/docs-drift/` (step 7). They are prepared and not opened.
 - Nothing has been pushed, uploaded or posted. The only network use was public Hub reads.
 
@@ -259,3 +259,11 @@ Decision: report both the local measurement (what xet-core 1.6.0 would transfer)
 - README surprise 2 made the same claim before the rerun: fixed, it now cites the rerun.
 - `FileCleaner` now fails hard on a size mismatch: noted in ADR 0006.
 - Lines over 120 columns and a duplicate lookup in `e2e_checks.py`: fixed.
+
+## 2026-10-04 Replace the sweep's theory curve (owner approval)
+
+**Asked.** The owner approved replacing `exp(-values_per_chunk x P)` in the scattered-sweep check with the chunk-size-weighted curve, keeping the tolerance.
+
+**Ran.** ADR 0007 records the swap and that the curve was adopted after the data. The plan's tolerance line points at it. `e2e_checks.py` now gates on `size_aware_theory_chunk_overlap_fraction` and prints the plan's curve gap for comparison. `report.py` labels both curves in chart 1, and the sweep text reports the cells outside tolerance for both. README surprise 1 now describes the replacement. The Rust tool is unchanged, so `results/sweep.json` is unchanged too: it already carried both curves.
+
+**Saw.** Against the new curve, all 16 scattered cells are inside the fixed tolerance, with a worst gap of a quarter of a percentage point. Against the plan's curve, 4 cells remain outside, as before. No verdict, table or chart value moves, because verdicts never use the curve.

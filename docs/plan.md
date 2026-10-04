@@ -102,7 +102,7 @@ Never cut steps 1, 2 or 6.
 - `overlap(A, A)` is 100%, and `upload` of A twice gives `new_bytes` of about 0 (shard overhead only).
 - Transferred data bytes are at least `next file size - chunk overlap bytes`. The defrag gap is never negative.
 - Attributed bytes reconcile with the file size for every pair.
-- For the scattered sweep, the mean of 5 seeds is within 3 percentage points of `exp(-values_per_chunk * P)`, or within 3 standard errors, whichever is wider. `values_per_chunk` is the measured mean chunk size divided by 2 bytes. This tolerance is fixed now, so never tune it.
+- For the scattered sweep, the mean of 5 seeds is within 3 percentage points of `exp(-values_per_chunk * P)`, or within 3 standard errors, whichever is wider. `values_per_chunk` is the measured mean chunk size divided by 2 bytes. This tolerance is fixed now, so never tune it. Amended by ADR 0007: the tolerance is unchanged, but the curve is now the same survival chance weighted by the base's actual chunk sizes, because chunk sizes vary and overlap is measured in bytes.
 - At the same density, clustered modes give more chunk overlap than scattered.
 - Oracles 2 and 3 match.
 

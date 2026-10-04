@@ -1,0 +1,34 @@
+{
+  "name": "hub-reconstruction-ajjyy-s3150-s3160",
+  "kind": "hub-reconstruction",
+  "tool": {
+    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "script": "scripts/hub_reconstruction.py"
+  },
+  "inputs": [
+    {
+      "role": "base",
+      "repo_id": "ajjyy/Qwen2-0.5B-GRPO-attempt1",
+      "revision": "868f0e701973847ec82220637c1149ca58acd0d9",
+      "file": "model.safetensors",
+      "xet_hash": "53b52787be6db8724989080f6ad0e87467bcdf16c010e5ce567da466915ba128"
+    },
+    {
+      "role": "next",
+      "repo_id": "ajjyy/Qwen2-0.5B-GRPO-attempt1",
+      "revision": "8ac61c6bd32df293c1c7fd1dc3057b2407449dcc",
+      "file": "model.safetensors",
+      "xet_hash": "55e77a45f2b014bf81fd95380b7bafa461b17976c616bb8275419f8f85aa2732"
+    }
+  ],
+  "result": {
+    "next_file_bytes": 988097824,
+    "next_terms": 15,
+    "next_chunks": 15859,
+    "shared_chunks": 0,
+    "shared_bytes_in_whole_shared_terms": 0,
+    "base_xorbs": 15,
+    "next_xorbs": 15,
+    "next_xorbs_also_in_base": 0
+  }
+}

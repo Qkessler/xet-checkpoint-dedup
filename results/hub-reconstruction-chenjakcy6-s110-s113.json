@@ -1,0 +1,34 @@
+{
+  "name": "hub-reconstruction-chenjakcy6-s110-s113",
+  "kind": "hub-reconstruction",
+  "tool": {
+    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "script": "scripts/hub_reconstruction.py"
+  },
+  "inputs": [
+    {
+      "role": "base",
+      "repo_id": "ChenJakcy6/Qwen2-0.5B-GRPO-test",
+      "revision": "5012bf807a40cdeaa7f623624980043027828a25",
+      "file": "model.safetensors",
+      "xet_hash": "95cdd42e1fb637b4c81cb1e31ffb1793271431013f2329285b1beddaf94e8df5"
+    },
+    {
+      "role": "next",
+      "repo_id": "ChenJakcy6/Qwen2-0.5B-GRPO-test",
+      "revision": "1cd8897a89b02dbd97a2e8eafb471ca25e9b94f0",
+      "file": "model.safetensors",
+      "xet_hash": "06649878af416bd84a67d449acd9bb482e004ca8a8b9018cf9a4f67e23869360"
+    }
+  ],
+  "result": {
+    "next_file_bytes": 988097824,
+    "next_terms": 375,
+    "next_chunks": 15336,
+    "shared_chunks": 202,
+    "shared_bytes_in_whole_shared_terms": 4702622,
+    "base_xorbs": 22,
+    "next_xorbs": 24,
+    "next_xorbs_also_in_base": 9
+  }
+}

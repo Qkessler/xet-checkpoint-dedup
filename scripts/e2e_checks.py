@@ -60,11 +60,15 @@ def sweep(path: str):
             f"size-aware gap {sizeAwareGap:+.4f} tolerance {tolerance:.4f} {verdict}"
         )
         if abs(plainGap) > tolerance:
-            fail(f"{path}: scattered density {density:g} is {plainGap:+.4f} from exp(-values_per_chunk * P), tolerance {tolerance:.4f}")
+            fail(
+                f"{path}: scattered density {density:g} is {plainGap:+.4f} from exp(-values_per_chunk * P), tolerance {tolerance:.4f}"
+            )
         for clusteredMode in ("rows", "tensors"):
             clustered = cells[(clusteredMode, density)]["mean_chunk_overlap_fraction"]
             if not clustered > mean:
-                fail(f"{path}: {clusteredMode} overlap {clustered:.4f} is not above scattered {mean:.4f} at density {density:g}")
+                fail(
+                    f"{path}: {clusteredMode} overlap {clustered:.4f} is not above scattered {mean:.4f} at density {density:g}"
+                )
     print(f"done sweep {path}")
 
 

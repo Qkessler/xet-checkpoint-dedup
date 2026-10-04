@@ -1,0 +1,84 @@
+{
+  "name": "upload-run-b-frozen-half-s01-s11",
+  "kind": "upload",
+  "tool": {
+    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "git_dirty": false,
+    "crate_versions": {
+      "hf-xet": "1.6.0",
+      "xet-client": "1.6.0",
+      "xet-core-structures": "1.6.0",
+      "xet-data": "1.6.0",
+      "xet-runtime": "1.6.0"
+    }
+  },
+  "inputs": [
+    {
+      "role": "base",
+      "path": "/home/enrikes/.cache/xet-checkpoint-dedup/runs/run-b-frozen-half/step_00001.safetensors",
+      "bytes": 988097824,
+      "sha256": "3302541e10b2bf8013889cd0837c1ab393dc1247183f15dc11aab8b77b1e22af",
+      "manifest_key": "run-b-frozen-half-step-00001",
+      "repo_id": null,
+      "revision": null,
+      "file": "step_00001.safetensors"
+    },
+    {
+      "role": "next",
+      "path": "/home/enrikes/.cache/xet-checkpoint-dedup/runs/run-b-frozen-half/step_00011.safetensors",
+      "bytes": 988097824,
+      "sha256": "63549e4b962bfdf396a3d21c02343062c90b9621bf19b73ecb43145b58f4bc1d",
+      "manifest_key": "run-b-frozen-half-step-00011",
+      "repo_id": null,
+      "revision": null,
+      "file": "step_00011.safetensors"
+    }
+  ],
+  "seed": null,
+  "result": {
+    "base": {
+      "file_bytes": 988097824,
+      "reported_file_bytes": 988097824,
+      "dedup_metrics": {
+        "total_bytes": 988097824,
+        "deduped_bytes": 0,
+        "new_bytes": 988097824,
+        "deduped_bytes_by_global_dedup": 0,
+        "defrag_prevented_dedup_bytes": 0,
+        "total_chunks": 15400,
+        "deduped_chunks": 0,
+        "new_chunks": 15400,
+        "deduped_chunks_by_global_dedup": 0,
+        "defrag_prevented_dedup_chunks": 0,
+        "xorb_bytes_uploaded": 854264597,
+        "shard_bytes_uploaded": 741552,
+        "total_bytes_uploaded": 855006149
+      }
+    },
+    "next": {
+      "file_bytes": 988097824,
+      "reported_file_bytes": 988097824,
+      "dedup_metrics": {
+        "total_bytes": 988097824,
+        "deduped_bytes": 358559551,
+        "new_bytes": 629538273,
+        "deduped_bytes_by_global_dedup": 0,
+        "defrag_prevented_dedup_bytes": 0,
+        "total_chunks": 15328,
+        "deduped_chunks": 5600,
+        "new_chunks": 9728,
+        "deduped_chunks_by_global_dedup": 0,
+        "defrag_prevented_dedup_chunks": 0,
+        "xorb_bytes_uploaded": 543104072,
+        "shard_bytes_uploaded": 472896,
+        "total_bytes_uploaded": 543576968
+      }
+    },
+    "chunk_overlap_bytes": 358559551,
+    "next_internal_repeat_bytes": 0,
+    "accepted_dedup_bytes": 358559551,
+    "transferred_bytes": 630011169,
+    "defrag_gap_bytes": 0,
+    "raw_defrag_gap_bytes": 0
+  }
+}

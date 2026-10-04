@@ -1,0 +1,84 @@
+{
+  "name": "upload-run-a-s09-s10",
+  "kind": "upload",
+  "tool": {
+    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "git_dirty": false,
+    "crate_versions": {
+      "hf-xet": "1.6.0",
+      "xet-client": "1.6.0",
+      "xet-core-structures": "1.6.0",
+      "xet-data": "1.6.0",
+      "xet-runtime": "1.6.0"
+    }
+  },
+  "inputs": [
+    {
+      "role": "base",
+      "path": "/home/enrikes/.cache/xet-checkpoint-dedup/runs/run-a/step_00009.safetensors",
+      "bytes": 988097824,
+      "sha256": "1e5580be60f31a15ce5e4c0740375d8015c6cbe14433c70884313d5d837ec89b",
+      "manifest_key": "run-a-step-00009",
+      "repo_id": null,
+      "revision": null,
+      "file": "step_00009.safetensors"
+    },
+    {
+      "role": "next",
+      "path": "/home/enrikes/.cache/xet-checkpoint-dedup/runs/run-a/step_00010.safetensors",
+      "bytes": 988097824,
+      "sha256": "838c090a4bcbf2bfc5a701b7fcaacb9160866ff23fcbd321cd430779de07c8df",
+      "manifest_key": "run-a-step-00010",
+      "repo_id": null,
+      "revision": null,
+      "file": "step_00010.safetensors"
+    }
+  ],
+  "seed": null,
+  "result": {
+    "base": {
+      "file_bytes": 988097824,
+      "reported_file_bytes": 988097824,
+      "dedup_metrics": {
+        "total_bytes": 988097824,
+        "deduped_bytes": 0,
+        "new_bytes": 988097824,
+        "deduped_bytes_by_global_dedup": 0,
+        "defrag_prevented_dedup_bytes": 0,
+        "total_chunks": 15363,
+        "deduped_chunks": 0,
+        "new_chunks": 15363,
+        "deduped_chunks_by_global_dedup": 0,
+        "defrag_prevented_dedup_chunks": 0,
+        "xorb_bytes_uploaded": 854305883,
+        "shard_bytes_uploaded": 739776,
+        "total_bytes_uploaded": 855045659
+      }
+    },
+    "next": {
+      "file_bytes": 988097824,
+      "reported_file_bytes": 996802903,
+      "dedup_metrics": {
+        "total_bytes": 996802903,
+        "deduped_bytes": 17285272,
+        "new_bytes": 979517631,
+        "deduped_bytes_by_global_dedup": 0,
+        "defrag_prevented_dedup_bytes": 8705079,
+        "total_chunks": 15575,
+        "deduped_chunks": 454,
+        "new_chunks": 15121,
+        "deduped_chunks_by_global_dedup": 0,
+        "defrag_prevented_dedup_chunks": 199,
+        "xorb_bytes_uploaded": 847299354,
+        "shard_bytes_uploaded": 758688,
+        "total_bytes_uploaded": 848058042
+      }
+    },
+    "chunk_overlap_bytes": 17285272,
+    "next_internal_repeat_bytes": 0,
+    "accepted_dedup_bytes": 8580193,
+    "transferred_bytes": 980276319,
+    "defrag_gap_bytes": 8705079,
+    "raw_defrag_gap_bytes": 0
+  }
+}

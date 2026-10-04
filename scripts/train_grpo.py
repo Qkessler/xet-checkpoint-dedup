@@ -50,7 +50,9 @@ class Bf16CheckpointCallback(TrainerCallback):
         self.lastStepEnd = None
 
     def saveCheckpoint(self, model, step: int):
-        stateDict = {name: tensor.detach().to(torch.bfloat16).contiguous() for name, tensor in model.state_dict().items()}
+        stateDict = {
+            name: tensor.detach().to(torch.bfloat16).contiguous() for name, tensor in model.state_dict().items()
+        }
         if model.config.tie_word_embeddings:
             stateDict.pop("lm_head.weight", None)
         save_file(stateDict, str(self.runDir / f"step_{step:05d}.safetensors"), metadata={"format": "pt"})

@@ -2,9 +2,10 @@
   "name": "qwen25-self",
   "kind": "overlap",
   "tool": {
-    "git_commit": "61be1f667fb96f274d9a09971ea7012b2838284d",
-    "git_dirty": true,
+    "git_commit": "fd19936e95350c0b924be6fd6ef0000943fc0393",
+    "git_dirty": false,
     "crate_versions": {
+      "hf-xet": "1.6.0",
       "xet-client": "1.6.0",
       "xet-core-structures": "1.6.0",
       "xet-data": "1.6.0",

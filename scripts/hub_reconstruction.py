@@ -28,9 +28,7 @@ def fileTerms(repoId: str, revision: str, fileName: str) -> dict:
     _, tokenHeaders = getJson(f"{hubUrl}/api/models/{repoId}/xet-read-token/{revision}")
     token = tokenHeaders["x-xet-access-token"]
     casUrl = tokenHeaders["x-xet-cas-url"]
-    reconstruction, _ = getJson(
-        f"{casUrl}/v1/reconstructions/{entry['xetHash']}", {"Authorization": f"Bearer {token}"}
-    )
+    reconstruction, _ = getJson(f"{casUrl}/v1/reconstructions/{entry['xetHash']}", {"Authorization": f"Bearer {token}"})
     return {"xet_hash": entry["xetHash"], "file_bytes": entry["size"], "terms": reconstruction["terms"]}
 
 
@@ -67,8 +65,20 @@ def main():
         "kind": "hub-reconstruction",
         "tool": {"git_commit": commit, "script": "scripts/hub_reconstruction.py"},
         "inputs": [
-            {"role": "base", "repo_id": args.repo_id, "revision": args.base_revision, "file": args.file, "xet_hash": base["xet_hash"]},
-            {"role": "next", "repo_id": args.repo_id, "revision": args.next_revision, "file": args.file, "xet_hash": following["xet_hash"]},
+            {
+                "role": "base",
+                "repo_id": args.repo_id,
+                "revision": args.base_revision,
+                "file": args.file,
+                "xet_hash": base["xet_hash"],
+            },
+            {
+                "role": "next",
+                "repo_id": args.repo_id,
+                "revision": args.next_revision,
+                "file": args.file,
+                "xet_hash": following["xet_hash"],
+            },
         ],
         "result": {
             "next_file_bytes": following["file_bytes"],
@@ -78,7 +88,9 @@ def main():
             "shared_bytes_in_whole_shared_terms": sharedBytes,
             "base_xorbs": len({term["hash"] for term in base["terms"]}),
             "next_xorbs": len({term["hash"] for term in following["terms"]}),
-            "next_xorbs_also_in_base": len({term["hash"] for term in following["terms"]} & {term["hash"] for term in base["terms"]}),
+            "next_xorbs_also_in_base": len(
+                {term["hash"] for term in following["terms"]} & {term["hash"] for term in base["terms"]}
+            ),
         },
     }
     resultsDir.mkdir(exist_ok=True)

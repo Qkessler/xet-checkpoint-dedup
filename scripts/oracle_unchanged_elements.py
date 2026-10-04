@@ -10,7 +10,14 @@ from pathlib import Path
 
 import numpy as np
 
-elementDtypes = {"BF16": np.uint16, "F16": np.uint16, "F32": np.uint32, "I64": np.uint64, "I32": np.uint32, "U8": np.uint8}
+elementDtypes = {
+    "BF16": np.uint16,
+    "F16": np.uint16,
+    "F32": np.uint32,
+    "I64": np.uint64,
+    "I32": np.uint32,
+    "U8": np.uint8,
+}
 
 
 def tensorViews(path: Path) -> dict:

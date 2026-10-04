@@ -137,11 +137,15 @@ def percent(fraction: float, digits: int = 1) -> str:
 
 
 def verdict(transferredBytes: int, sparseDeltaBytes: int, anchorBytes: int) -> str:
+    """ADR 0001. "holds" is tested first; "depends" names where the pair sits between the two thresholds."""
     if transferredBytes <= HOLDS_WITHIN_SPARSE_MULTIPLE * sparseDeltaBytes:
         return "holds"
     if transferredBytes >= DOES_NOT_HOLD_ANCHOR_SHARE * anchorBytes:
         return "does not hold"
-    return "depends"
+    return (
+        f"depends ({transferredBytes / sparseDeltaBytes:.1f}x the sparse delta, "
+        f"{percent(transferredBytes / anchorBytes)} of the anchor)"
+    )
 
 
 def loadPairs() -> list[dict]:
@@ -187,7 +191,7 @@ def loadPairs() -> list[dict]:
 def pairRow(pair: dict, label: str) -> str:
     anchor = pair["anchor_bytes"]
     return (
-        f"| {label} | {pair['step_gap']} | {percent(1 - pair['unchanged_element_fraction'], 2)} "
+        f"| {label} | {pair['step_gap']} | {megabytes(anchor)} | {percent(1 - pair['unchanged_element_fraction'], 2)} "
         f"| {megabytes(pair['sparse_delta_bytes'])} | {percent(pair['chunk_overlap_bytes'] / anchor)} "
         f"| {megabytes(pair['transferred_bytes'])} ({percent(pair['transferred_bytes'] / anchor)}) "
         f"| {pair['transferred_bytes'] / pair['sparse_delta_bytes']:.1f}x "
@@ -196,9 +200,9 @@ def pairRow(pair: dict, label: str) -> str:
 
 
 tableHeader = (
-    "| pair | step gap | elements changed | sparse delta | chunk overlap | transferred (share of anchor) "
+    "| pair | step gap | anchor | elements changed | sparse delta | chunk overlap | transferred (share of anchor) "
     "| transferred / sparse delta | defrag gap | verdict |\n"
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
 )
 
 
@@ -209,7 +213,7 @@ def consecutiveSummaryRow(pairs: list[dict], label: str) -> str:
     anchor = pairs[0]["anchor_bytes"]
     verdicts = sorted({pair["verdict"] for pair in pairs})
     return (
-        f"| {label}, {len(pairs)} consecutive pairs: median (min to max) | 1 "
+        f"| {label}, {len(pairs)} consecutive pairs: median (min to max) | 1 | {megabytes(anchor)} "
         f"| {spread([1 - pair['unchanged_element_fraction'] for pair in pairs], lambda value: percent(value, 2))} "
         f"| {spread([pair['sparse_delta_bytes'] for pair in pairs], megabytes)} "
         f"| {spread([pair['chunk_overlap_bytes'] / anchor for pair in pairs], percent)} "
@@ -229,7 +233,10 @@ def pairLabel(pair: dict) -> str:
 def answerBlock(pairs: list[dict], sweep: dict) -> str:
     anchorShares = [pair["transferred_bytes"] / pair["anchor_bytes"] for pair in pairs]
     sparseMultiples = [pair["transferred_bytes"] / pair["sparse_delta_bytes"] for pair in pairs]
-    verdictCounts = {name: sum(1 for pair in pairs if pair["verdict"] == name) for name in ("holds", "depends", "does not hold")}
+    verdictCounts = {
+        name: sum(1 for pair in pairs if pair["verdict"].startswith(name))
+        for name in ("holds", "depends", "does not hold")
+    }
     trainable = [pair for pair in pairs if pair["source"] == "run-a" and pair["step_gap"] == 1]
     frozen = [pair for pair in pairs if pair["source"] == "run-b-frozen-half" and pair["step_gap"] == 1]
     if verdictCounts["does not hold"] == len(pairs):
@@ -266,7 +273,7 @@ def answerBlock(pairs: list[dict], sweep: dict) -> str:
     )
     lines.append(
         f"- The reason is arithmetic, not a defect: a chunk holds about {sweep['result']['values_per_chunk']:,.0f} bf16 "
-        f"elements, so when 1% of elements change at random, {percent(scatteredAtOnePercent)} of bytes stay in "
+        f"elements, so when 1% of elements change at random, {percent(scatteredAtOnePercent, 2)} of bytes stay in "
         f"reusable chunks (chart 1). Chunk dedup needs changes to cluster."
     )
     return "\n".join(lines)
@@ -279,7 +286,10 @@ def pairsBlock(pairs: list[dict]) -> str:
         consecutive = [pair for pair in sourcePairs if pair["step_gap"] == 1]
         if consecutive:
             rows.append(consecutiveSummaryRow(consecutive, f"{source} ({runLabels[source]})"))
-        for pair in sorted((pair for pair in sourcePairs if pair["step_gap"] > 1), key=lambda pair: (pair["step_gap"], pair["base_step"])):
+        for pair in sorted(
+            (pair for pair in sourcePairs if pair["step_gap"] > 1),
+            key=lambda pair: (pair["step_gap"], pair["base_step"]),
+        ):
             rows.append(pairRow(pair, pairLabel(pair)))
     for pair in pairs:
         if pair["pair"] in thirdPartyPairs:
@@ -289,7 +299,10 @@ def pairsBlock(pairs: list[dict]) -> str:
 
 def allPairsBlock(pairs: list[dict]) -> str:
     rows = [tableHeader]
-    rows += [pairRow(pair, pairLabel(pair)) for pair in sorted(pairs, key=lambda pair: (pair["source"], pair["base_step"], pair["next_step"]))]
+    rows += [
+        pairRow(pair, pairLabel(pair))
+        for pair in sorted(pairs, key=lambda pair: (pair["source"], pair["base_step"], pair["next_step"]))
+    ]
     return "\n".join(rows)
 
 
@@ -310,10 +323,16 @@ def sweepBlock(sweep: dict) -> str:
     outside = [
         cell
         for cell in scattered
-        if abs(cell["mean_chunk_overlap_fraction"] - cell["theory_chunk_overlap_fraction"]) > max(0.03, 3 * cell["standard_error"])
+        if abs(cell["mean_chunk_overlap_fraction"] - cell["theory_chunk_overlap_fraction"])
+        > max(0.03, 3 * cell["standard_error"])
     ]
-    sizeAwareWorst = max(abs(cell["mean_chunk_overlap_fraction"] - cell["size_aware_theory_chunk_overlap_fraction"]) for cell in scattered)
-    plainWorst = max(abs(cell["mean_chunk_overlap_fraction"] - cell["theory_chunk_overlap_fraction"]) for cell in scattered)
+    sizeAwareWorst = max(
+        abs(cell["mean_chunk_overlap_fraction"] - cell["size_aware_theory_chunk_overlap_fraction"])
+        for cell in scattered
+    )
+    plainWorst = max(
+        abs(cell["mean_chunk_overlap_fraction"] - cell["theory_chunk_overlap_fraction"]) for cell in scattered
+    )
     seeds = len(report["plan"]["seeds"])
     return "\n".join(
         [
@@ -324,7 +343,7 @@ def sweepBlock(sweep: dict) -> str:
             f"| first density with overlap under 50% | {firstDensityBelow('scattered', 0.5)} | {firstDensityBelow('rows', 0.5)} | {firstDensityBelow('tensors', 0.5)} |",
             f"| first density with overlap under 1% | {firstDensityBelow('scattered', 0.01)} | {firstDensityBelow('rows', 0.01)} | {firstDensityBelow('tensors', 0.01)} |",
             "",
-            f"Mean chunk {report['base_mean_chunk_bytes']:,.0f} bytes, so {report['values_per_chunk']:,.0f} bf16 values per chunk; "
+            f"Mean chunk {report['base_mean_chunk_bytes']:,.0f} bytes, so {report['values_per_chunk']:,.0f} bf16 elements per chunk; "
             f"{seeds} seeds per cell. The pre-registered curve `exp(-values_per_chunk x P)` misses the scattered points by up to "
             f"{100 * plainWorst:.1f} percentage points, and {len(outside)} of {len(scattered)} scattered cells fall outside its fixed "
             f"tolerance. The same chance weighted by the actual chunk sizes misses by at most {100 * sizeAwareWorst:.2f} points (see Surprises).",
@@ -334,8 +353,9 @@ def sweepBlock(sweep: dict) -> str:
 
 def hubBlock(pairs: list[dict]) -> str:
     rows = [
-        "| pair | Hub: chunks of next file | Hub: chunks shared with base | local: chunk overlap | local: dedup accepted by upload |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "| pair | Hub: chunks of next file | Hub: chunks shared with base | Hub: bytes in shared terms | local: chunk overlap "
+        "| local: dedup accepted by upload |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for pairName, (repoId, baseStep, nextStep) in thirdPartyPairs.items():
         hubPath = resultsDir / f"hub-reconstruction-{pairName}.json"
@@ -345,7 +365,9 @@ def hubBlock(pairs: list[dict]) -> str:
         hub = json.loads(hubPath.read_text())["result"]
         rows.append(
             f"| {repoId} steps {baseStep} to {nextStep} | {hub['next_chunks']:,} | {hub['shared_chunks']:,} "
-            f"({percent(hub['shared_chunks'] / hub['next_chunks'], 2)}) | {percent(pair['chunk_overlap_bytes'] / pair['anchor_bytes'], 2)} "
+            f"({percent(hub['shared_chunks'] / hub['next_chunks'], 2)}) "
+            f"| {percent(hub['shared_bytes_in_whole_shared_terms'] / hub['next_file_bytes'], 2)} "
+            f"| {percent(pair['chunk_overlap_bytes'] / pair['anchor_bytes'], 2)} "
             f"| {percent(pair['accepted_dedup_bytes'] / pair['anchor_bytes'], 2)} |"
         )
     return "\n".join(rows)
@@ -376,7 +398,9 @@ def drawKindChart(sweep: dict, path: Path):
         ("ajjyy-s3150-s3160", "ajjyy, steps 3150 to 3160"),
     ]
     zeroChange = 1e-7
-    theory = sorted((cell for cell in sweep["result"]["cells"] if cell["mode"] == "scattered"), key=lambda cell: cell["density"])
+    theory = sorted(
+        (cell for cell in sweep["result"]["cells"] if cell["mode"] == "scattered"), key=lambda cell: cell["density"]
+    )
     figure, axesGrid = plt.subplots(2, 2, figsize=(10, 7.5), dpi=150, facecolor=surface, sharex=True, sharey=True)
     for axes, (pairName, title) in zip(axesGrid.flat, panels):
         styleAxes(axes)
@@ -412,34 +436,56 @@ def drawKindChart(sweep: dict, path: Path):
             label="tensor kind (roll-up)",
             zorder=3,
         )
-        for row in kinds:
+        labelGroups = {"embedding": ["embedding"], "norm": ["norm"]}
+        labelGroups["attention and MLP kinds"] = [kind for kind in kindOrder if kind not in ("embedding", "norm")]
+        labelOffsets = {
+            "embedding": (-6, 14, "right"),
+            "norm": (0, -14, "center"),
+            "attention and MLP kinds": (6, 8, "left"),
+        }
+        for label, members in labelGroups.items():
+            memberRows = [row for row in kinds if row["group"] in members]
+            if not memberRows:
+                continue
+            anchorRow = max(memberRows, key=lambda row: 1 - row["unchanged_element_fraction"])
             axes.annotate(
-                row["group"],
-                (max(1 - row["unchanged_element_fraction"], zeroChange), row["chunk_overlap_percent"]),
-                xytext=(4, 3),
+                label,
+                (
+                    max(1 - anchorRow["unchanged_element_fraction"], zeroChange),
+                    max(row["chunk_overlap_percent"] for row in memberRows),
+                ),
+                xytext=labelOffsets[label][:2],
                 textcoords="offset points",
+                ha=labelOffsets[label][2],
                 fontsize=7,
                 color=textSecondary,
             )
         axes.set_title(title, color=textPrimary, fontsize=9, loc="left")
         axes.set_xscale("log")
         axes.set_xlim(zeroChange / 2, 0.2)
-        axes.set_ylim(-3, 103)
+        axes.set_ylim(-16, 103)
     for axes in axesGrid[1]:
-        axes.set_xlabel("elements changed (1 - unchanged element fraction; 1e-7 means none)", color=textPrimary, fontsize=8)
+        axes.set_xlabel(
+            "elements changed (1 - unchanged element fraction; 1e-7 means none)", color=textPrimary, fontsize=8
+        )
     for axes in axesGrid[:, 0]:
         axes.set_ylabel("chunk overlap (% of bytes)", color=textPrimary, fontsize=9)
     handles, labels = axesGrid[0, 0].get_legend_handles_labels()
     figure.legend(handles, labels, loc="lower center", ncol=3, frameon=False, fontsize=8, labelcolor=textSecondary)
-    figure.suptitle("Unchanged elements vs chunk overlap, per tensor and per tensor kind", color=textPrimary, fontsize=11, x=0.02, ha="left")
+    figure.suptitle(
+        "Unchanged elements vs chunk overlap, per tensor and per tensor kind",
+        color=textPrimary,
+        fontsize=11,
+        x=0.02,
+        ha="left",
+    )
     figure.tight_layout(rect=(0, 0.05, 1, 0.97))
     figure.savefig(path, facecolor=surface, metadata={"Software": None})
     plt.close(figure)
 
 
-def buildBlocks() -> dict:
+def buildBlocks(sweep: dict) -> dict:
     pairs = loadPairs()
-    sweep = loadResult("sweep")
     return {
         "answer": answerBlock(pairs, sweep),
         "pairs": pairsBlock(pairs),
@@ -452,10 +498,11 @@ def buildBlocks() -> dict:
 
 def renderReadme(readme: str, blocks: dict) -> str:
     for name, content in blocks.items():
-        pattern = re.compile(rf"(<!-- BEGIN {re.escape(name)} -->\n).*?(\n<!-- END {re.escape(name)} -->)", re.S)
+        begin, end = f"<!-- BEGIN {name} -->", f"<!-- END {name} -->"
+        pattern = re.compile(rf"{re.escape(begin)}.*?{re.escape(end)}", re.S)
         if not pattern.search(readme):
-            raise SystemExit(f"README.md has no <!-- BEGIN {name} --> ... <!-- END {name} --> block")
-        readme = pattern.sub(lambda match: match.group(1) + content + match.group(2), readme)
+            raise SystemExit(f"README.md has no {begin} ... {end} block")
+        readme = pattern.sub(lambda match: f"{begin}\n{content}\n{end}", readme)
     return readme
 
 
@@ -465,7 +512,8 @@ def main():
     args = parser.parse_args()
     readmePath = repoRoot / "README.md"
     readme = readmePath.read_text()
-    rendered = renderReadme(readme, buildBlocks())
+    sweep = loadResult("sweep")
+    rendered = renderReadme(readme, buildBlocks(sweep))
     if args.check:
         if rendered != readme:
             print("README.md is stale: run `just report`", file=sys.stderr)
@@ -474,8 +522,8 @@ def main():
         return 0
     matplotlib.use("Agg")
     chartsDir.mkdir(parents=True, exist_ok=True)
-    drawSweepChart(loadResult("sweep"), chartsDir / "chunk-overlap-vs-density.png")
-    drawKindChart(loadResult("sweep"), chartsDir / "unchanged-elements-vs-chunk-overlap.png")
+    drawSweepChart(sweep, chartsDir / "chunk-overlap-vs-density.png")
+    drawKindChart(sweep, chartsDir / "unchanged-elements-vs-chunk-overlap.png")
     readmePath.write_text(rendered)
     return 0
 

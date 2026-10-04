@@ -1,151 +1,58 @@
-# Does Xet dedup consecutive RL checkpoints?
+# Does Xet dedup make full-checkpoint RL weight sync cheap?
+
+## The claim
+
+Hugging Face's [delta-weight-sync blog](https://huggingface.co/blog/delta-weight-sync) (2026-05-27) syncs RL weights from the trainer to inference servers through a Hub bucket, which is S3-like storage on the Hugging Face Hub. Every step it sends a sparse delta: only the bf16 elements that changed since the last step. Every few steps it also writes an anchor, a full checkpoint. It then makes two claims about Xet, the chunk-dedup storage engine behind buckets:
+
+> The practical upshot, which is delightful in this context, is that even if we were too lazy to write the sparse encoding and just uploaded full anchors every step, Xet would _still_ only transfer the changed chunks.
+
+> Xet content-addresses storage so consecutive anchors share chunks at rest (which keeps your bucket from blowing up)
+
+Read literally, the first is true by construction: Xet sends the chunks that differ. This repo tests the reading a practitioner would act on: that full uploads cost about as little as sparse deltas, so the sparse encoding is optional.
+
+## Why it matters
+
+<!-- BEGIN value -->
+If the claim held, an RL team could skip the sparse encoding and upload the whole checkpoint every step, and Xet would make that cheap. It does not. On our own run, which uses the blog's setup at its most favourable, a full upload sends a median **975.5 MB per step**, against **26.8 MB** for the sparse delta, a median of **36.6x more** per pair on every weight sync. Over a 1,000-step run that projects to about 975 GB instead of 27 GB (median step x step count).
+
+Who acts on the claim, and what this measurement changes for them:
+
+- **RL teams syncing weights through a Hub bucket.** Keep the sparse encoding: Xet chunk dedup does not replace it. The blog's TRL pull requests for sparse sync ([#5417](https://github.com/huggingface/trl/pull/5417), [#5937](https://github.com/huggingface/trl/pull/5937)) were closed without merging on 2026-09-14, so TRL does not ship the sparse path today, and a user who follows the aside pays the full cost.
+- **Anyone keeping checkpoint history in a bucket.** The blog also says consecutive anchors "share chunks at rest". Enterprise buckets bill on deduplicated bytes, and each new checkpoint of our run adds a median 98.6% of its size to storage as new chunks (counted before Xet's compression).
+- **Xet and TRL maintainers.** The measurement shows where chunk dedup does pay: when whole regions stay bit-identical, as with frozen layers, where a median 36.6% of each checkpoint was reused. It also found that the released `hf-xet` 1.6.0 reports inflated dedup and file sizes to its callers, which is fixed in xet-core but not yet released.
+<!-- END value -->
+
+![Bytes per weight sync: full checkpoint, full upload after Xet dedup, and sparse delta](docs/charts/cost-per-weight-sync.png)
+
+The chart shows our two runs. The third-party Hub pairs, whose sparse deltas are smaller still, are in [docs/results.md](docs/results.md).
+
+## Answer
 
 <!-- BEGIN answer -->
 **No.** Across 46 checkpoint pairs, uploading the full next checkpoint transferred 63.0% to 99.8% of its size, which is 5.3x to 870.0x the blog's sparse delta for the same pair. Under the rule fixed before measuring (ADR 0001), the claim holds on 0 pairs, depends on 0, and does not hold on 46.
 
 - On our own one-step-apart GRPO checkpoints (lr 1e-6, the blog's setup and its best case), a median 0.90% of elements change per step, yet only 1.9% of the bytes sit in chunks Xet can reuse.
 - Freezing half the layers is the case where chunk dedup works: 36.6% of each checkpoint is reused, and the rest is still sent in full.
-- The reason is arithmetic, not a defect: a chunk holds about 32,280 bf16 elements, so when 1% of elements change at random, 0.00% of bytes stay in reusable chunks (chart 1). Chunk dedup needs changes to cluster.
+- The reason is arithmetic, not a defect: a chunk holds about 32,280 bf16 elements, so when 1% of elements change at random, 0.00% of bytes stay in reusable chunks (see "Where chunk dedup works"). Chunk dedup needs changes to cluster.
 <!-- END answer -->
 
-The sparse encoding in the delta-weight-sync blog is what makes per-step weight sync cheap. Xet's chunk dedup helps when changes cluster, as with frozen layers or embedding rows that do not change, and this repo measures how far each case gets.
+![Every checkpoint pair placed against the two verdict thresholds](docs/charts/pairs-against-verdict-rule.png)
 
-## The claim
+Most of the all-trainable pairs overlap near the top of the chart. The verdict rule was fixed before measuring ([ADR 0001](docs/adr/0001-test-the-implied-claim-with-preset-thresholds.md)). A pair **holds** if the full upload sends at most 3x the sparse delta, which is cheap enough to skip the sparse encoding. It does **not hold** if the full upload sends at least half the checkpoint, so chunk dedup saves less than half and the sparse encoding does the real work. Anything between **depends**. "Holds" is tested first, so a pair under 3x counts as holding, whatever its share; no pair comes close. The transferred bytes here count chunks before compression, and so does the sparse delta. Every number behind the charts, pair by pair, is in [docs/results.md](docs/results.md).
 
-From [Shipping a Trillion Parameters With a Hub Bucket: Delta Weight Sync in TRL](https://huggingface.co/blog/delta-weight-sync) (2026-05-27), section 3.1:
-
-> The practical upshot, which is delightful in this context, is that even if we were too lazy to write the sparse encoding and just uploaded full anchors every step, Xet would _still_ only transfer the changed chunks.
-
-Read literally, this is true by construction: Xet sends the chunks that differ. This repo tests the reading a practitioner would act on, that uploading full checkpoints every step costs about as little as the blog's sparse deltas.
-
-## Verdict rule
-
-Fixed before measuring ([ADR 0001](docs/adr/0001-test-the-implied-claim-with-preset-thresholds.md)). For each checkpoint pair, compare the bytes Xet's upload path transfers for the next checkpoint with the sparse delta for the same pair (changed elements x 6 bytes: a 4-byte index plus a 2-byte bf16 value):
-
-- transferred bytes within 3x of the sparse delta: **holds**;
-- transferred bytes at least 50% of the anchor (the full checkpoint): **does not hold**;
-- anything in between: **depends**, with the factor named.
-
-## Results
-
-### Per checkpoint pair (chart 3)
-
-<!-- BEGIN pairs -->
-| pair | step gap | anchor | elements changed | sparse delta | chunk overlap | transferred (share of anchor) | transferred / sparse delta | defrag gap | verdict |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| run-a (ours, all layers trainable), 21 consecutive pairs: median (min to max) | 1 | 988.1 MB | 0.90% (0.60% to 1.68%) | 26.8 MB (17.8 MB to 49.9 MB) | 1.9% (1.1% to 2.7%) | 98.7% (98.4% to 99.6%) | 36.6x (19.6x to 54.6x) | 0.64% (0.31% to 1.13%) | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 2 | 2 | 988.1 MB | 1.96% | 58.0 MB | 0.9% | 982.1 MB (99.4%) | 16.9x | 0.24% | does not hold |
-| run-a (ours, all layers trainable) steps 10 to 12 | 2 | 988.1 MB | 1.52% | 45.0 MB | 1.2% | 982.4 MB (99.4%) | 21.8x | 0.58% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 5 | 5 | 988.1 MB | 3.15% | 93.4 MB | 0.5% | 984.1 MB (99.6%) | 10.5x | 0.06% | does not hold |
-| run-a (ours, all layers trainable) steps 10 to 15 | 5 | 988.1 MB | 2.78% | 82.5 MB | 0.9% | 982.2 MB (99.4%) | 11.9x | 0.18% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 10 | 10 | 988.1 MB | 4.43% | 131.2 MB | 0.3% | 985.5 MB (99.7%) | 7.5x | 0.00% | does not hold |
-| run-a (ours, all layers trainable) steps 10 to 20 | 10 | 988.1 MB | 4.07% | 120.6 MB | 0.6% | 983.4 MB (99.5%) | 8.2x | 0.06% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 20 | 20 | 988.1 MB | 6.19% | 183.4 MB | 0.3% | 986.2 MB (99.8%) | 5.4x | 0.00% | does not hold |
-| run-a (ours, all layers trainable) steps 1 to 21 | 20 | 988.1 MB | 6.28% | 186.1 MB | 0.3% | 986.3 MB (99.8%) | 5.3x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen), 11 consecutive pairs: median (min to max) | 1 | 988.1 MB | 0.54% (0.48% to 0.85%) | 16.0 MB (14.4 MB to 25.3 MB) | 36.6% (36.5% to 37.5%) | 63.5% (63.0% to 63.5%) | 39.2x (24.6x to 43.7x) | 0.00% (0.00% to 0.40%) | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 0 to 2 | 2 | 988.1 MB | 0.97% | 28.6 MB | 36.9% | 624.5 MB (63.2%) | 21.8x | 0.09% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 0 to 5 | 5 | 988.1 MB | 1.53% | 45.5 MB | 36.4% | 628.8 MB (63.6%) | 13.8x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 0 to 10 | 10 | 988.1 MB | 2.21% | 65.4 MB | 36.3% | 630.0 MB (63.8%) | 9.6x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 1 to 11 | 10 | 988.1 MB | 2.32% | 68.8 MB | 36.3% | 630.0 MB (63.8%) | 9.2x | 0.00% | does not hold |
-| ajjyy/Qwen2-0.5B-GRPO-attempt1 steps 3150 to 3160 | 10 | 988.1 MB | 0.04% | 1.1 MB | 11.3% | 917.0 MB (92.8%) | 870.0x | 4.01% | does not hold |
-| ChenJakcy6/Qwen2-0.5B-GRPO-test steps 110 to 113 | 3 | 988.1 MB | 0.12% | 3.5 MB | 1.2% | 983.5 MB (99.5%) | 282.2x | 0.65% | does not hold |
-<!-- END pairs -->
-
-"Chunk overlap" is the share of the next file's bytes in chunks whose hash also appears in the base. "Transferred" is `new_bytes + shard_bytes_uploaded` from Xet's own `DeduplicationMetrics` after uploading the base and then the next checkpoint to the same local store. The "defrag gap" is chunk overlap that the upload path re-sent anyway, because defrag prevention refused short matches.
-
-<details>
-<summary>Every pair measured</summary>
-
-<!-- BEGIN all-pairs -->
-| pair | step gap | anchor | elements changed | sparse delta | chunk overlap | transferred (share of anchor) | transferred / sparse delta | defrag gap | verdict |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| ChenJakcy6/Qwen2-0.5B-GRPO-test steps 110 to 113 | 3 | 988.1 MB | 0.12% | 3.5 MB | 1.2% | 983.5 MB (99.5%) | 282.2x | 0.65% | does not hold |
-| ajjyy/Qwen2-0.5B-GRPO-attempt1 steps 3150 to 3160 | 10 | 988.1 MB | 0.04% | 1.1 MB | 11.3% | 917.0 MB (92.8%) | 870.0x | 4.01% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 1 | 1 | 988.1 MB | 1.68% | 49.9 MB | 1.5% | 979.9 MB (99.2%) | 19.6x | 0.64% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 2 | 2 | 988.1 MB | 1.96% | 58.0 MB | 0.9% | 982.1 MB (99.4%) | 16.9x | 0.24% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 5 | 5 | 988.1 MB | 3.15% | 93.4 MB | 0.5% | 984.1 MB (99.6%) | 10.5x | 0.06% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 10 | 10 | 988.1 MB | 4.43% | 131.2 MB | 0.3% | 985.5 MB (99.7%) | 7.5x | 0.00% | does not hold |
-| run-a (ours, all layers trainable) steps 0 to 20 | 20 | 988.1 MB | 6.19% | 183.4 MB | 0.3% | 986.2 MB (99.8%) | 5.4x | 0.00% | does not hold |
-| run-a (ours, all layers trainable) steps 1 to 2 | 1 | 988.1 MB | 1.39% | 41.2 MB | 1.1% | 983.7 MB (99.6%) | 23.9x | 0.61% | does not hold |
-| run-a (ours, all layers trainable) steps 1 to 21 | 20 | 988.1 MB | 6.28% | 186.1 MB | 0.3% | 986.3 MB (99.8%) | 5.3x | 0.00% | does not hold |
-| run-a (ours, all layers trainable) steps 2 to 3 | 1 | 988.1 MB | 1.25% | 37.2 MB | 1.3% | 978.9 MB (99.1%) | 26.3x | 0.32% | does not hold |
-| run-a (ours, all layers trainable) steps 3 to 4 | 1 | 988.1 MB | 1.07% | 31.7 MB | 1.4% | 981.5 MB (99.3%) | 30.9x | 0.66% | does not hold |
-| run-a (ours, all layers trainable) steps 4 to 5 | 1 | 988.1 MB | 1.32% | 39.0 MB | 1.3% | 983.3 MB (99.5%) | 25.2x | 0.78% | does not hold |
-| run-a (ours, all layers trainable) steps 5 to 6 | 1 | 988.1 MB | 1.09% | 32.4 MB | 1.5% | 981.4 MB (99.3%) | 30.3x | 0.77% | does not hold |
-| run-a (ours, all layers trainable) steps 6 to 7 | 1 | 988.1 MB | 0.99% | 29.2 MB | 1.8% | 975.5 MB (98.7%) | 33.4x | 0.43% | does not hold |
-| run-a (ours, all layers trainable) steps 7 to 8 | 1 | 988.1 MB | 0.96% | 28.6 MB | 1.9% | 974.8 MB (98.7%) | 34.1x | 0.53% | does not hold |
-| run-a (ours, all layers trainable) steps 8 to 9 | 1 | 988.1 MB | 0.99% | 29.3 MB | 2.1% | 972.5 MB (98.4%) | 33.2x | 0.43% | does not hold |
-| run-a (ours, all layers trainable) steps 9 to 10 | 1 | 988.1 MB | 0.97% | 28.7 MB | 1.7% | 980.3 MB (99.2%) | 34.1x | 0.88% | does not hold |
-| run-a (ours, all layers trainable) steps 10 to 11 | 1 | 988.1 MB | 0.90% | 26.8 MB | 1.8% | 980.4 MB (99.2%) | 36.6x | 0.93% | does not hold |
-| run-a (ours, all layers trainable) steps 10 to 12 | 2 | 988.1 MB | 1.52% | 45.0 MB | 1.2% | 982.4 MB (99.4%) | 21.8x | 0.58% | does not hold |
-| run-a (ours, all layers trainable) steps 10 to 15 | 5 | 988.1 MB | 2.78% | 82.5 MB | 0.9% | 982.2 MB (99.4%) | 11.9x | 0.18% | does not hold |
-| run-a (ours, all layers trainable) steps 10 to 20 | 10 | 988.1 MB | 4.07% | 120.6 MB | 0.6% | 983.4 MB (99.5%) | 8.2x | 0.06% | does not hold |
-| run-a (ours, all layers trainable) steps 11 to 12 | 1 | 988.1 MB | 0.84% | 24.8 MB | 1.9% | 975.7 MB (98.7%) | 39.4x | 0.58% | does not hold |
-| run-a (ours, all layers trainable) steps 12 to 13 | 1 | 988.1 MB | 0.82% | 24.4 MB | 2.0% | 973.3 MB (98.5%) | 39.9x | 0.45% | does not hold |
-| run-a (ours, all layers trainable) steps 13 to 14 | 1 | 988.1 MB | 0.76% | 22.5 MB | 2.2% | 972.5 MB (98.4%) | 43.2x | 0.60% | does not hold |
-| run-a (ours, all layers trainable) steps 14 to 15 | 1 | 988.1 MB | 0.70% | 20.8 MB | 2.2% | 972.8 MB (98.4%) | 46.7x | 0.58% | does not hold |
-| run-a (ours, all layers trainable) steps 15 to 16 | 1 | 988.1 MB | 0.65% | 19.3 MB | 2.6% | 974.3 MB (98.6%) | 50.6x | 1.13% | does not hold |
-| run-a (ours, all layers trainable) steps 16 to 17 | 1 | 988.1 MB | 0.60% | 17.8 MB | 2.7% | 972.6 MB (98.4%) | 54.6x | 1.06% | does not hold |
-| run-a (ours, all layers trainable) steps 17 to 18 | 1 | 988.1 MB | 0.67% | 19.9 MB | 2.4% | 973.6 MB (98.5%) | 48.9x | 0.89% | does not hold |
-| run-a (ours, all layers trainable) steps 18 to 19 | 1 | 988.1 MB | 0.78% | 23.0 MB | 2.4% | 972.0 MB (98.4%) | 42.2x | 0.71% | does not hold |
-| run-a (ours, all layers trainable) steps 19 to 20 | 1 | 988.1 MB | 0.81% | 24.1 MB | 2.3% | 972.7 MB (98.4%) | 40.4x | 0.69% | does not hold |
-| run-a (ours, all layers trainable) steps 20 to 21 | 1 | 988.1 MB | 0.81% | 24.0 MB | 1.6% | 975.8 MB (98.8%) | 40.6x | 0.31% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 0 to 1 | 1 | 988.1 MB | 0.85% | 25.3 MB | 37.5% | 622.4 MB (63.0%) | 24.6x | 0.40% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 0 to 2 | 2 | 988.1 MB | 0.97% | 28.6 MB | 36.9% | 624.5 MB (63.2%) | 21.8x | 0.09% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 0 to 5 | 5 | 988.1 MB | 1.53% | 45.5 MB | 36.4% | 628.8 MB (63.6%) | 13.8x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 0 to 10 | 10 | 988.1 MB | 2.21% | 65.4 MB | 36.3% | 630.0 MB (63.8%) | 9.6x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 1 to 2 | 1 | 988.1 MB | 0.69% | 20.5 MB | 37.2% | 624.0 MB (63.2%) | 30.4x | 0.26% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 1 to 11 | 10 | 988.1 MB | 2.32% | 68.8 MB | 36.3% | 630.0 MB (63.8%) | 9.2x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 2 to 3 | 1 | 988.1 MB | 0.63% | 18.7 MB | 37.3% | 623.1 MB (63.1%) | 33.4x | 0.29% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 3 to 4 | 1 | 988.1 MB | 0.54% | 16.0 MB | 36.6% | 626.9 MB (63.4%) | 39.2x | 0.01% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 4 to 5 | 1 | 988.1 MB | 0.65% | 19.1 MB | 36.6% | 626.6 MB (63.4%) | 32.8x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 5 to 6 | 1 | 988.1 MB | 0.56% | 16.5 MB | 36.6% | 627.2 MB (63.5%) | 38.0x | 0.03% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 6 to 7 | 1 | 988.1 MB | 0.52% | 15.3 MB | 36.6% | 627.0 MB (63.5%) | 41.0x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 7 to 8 | 1 | 988.1 MB | 0.50% | 14.8 MB | 36.6% | 627.1 MB (63.5%) | 42.3x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 8 to 9 | 1 | 988.1 MB | 0.50% | 14.9 MB | 36.5% | 627.6 MB (63.5%) | 42.2x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 9 to 10 | 1 | 988.1 MB | 0.49% | 14.6 MB | 36.6% | 627.0 MB (63.5%) | 42.9x | 0.00% | does not hold |
-| run-b-frozen-half (ours, layers 0-11 frozen) steps 10 to 11 | 1 | 988.1 MB | 0.48% | 14.4 MB | 36.6% | 627.2 MB (63.5%) | 43.7x | 0.00% | does not hold |
-<!-- END all-pairs -->
-
-</details>
-
-### Where chunk dedup works: change density (chart 1)
+## Where chunk dedup works
 
 ![Chunk overlap against change density for scattered, row-clustered and tensor-clustered perturbations](docs/charts/chunk-overlap-vs-density.png)
 
-Synthetic perturbations of `Qwen/Qwen2.5-0.5B-Instruct`: a fraction P of bf16 elements moved by one ulp, either scattered uniformly, or clustered into whole rows or whole tensors. Error bars are 3 standard errors over seeds.
-
-<!-- BEGIN sweep -->
-| | scattered | clustered: rows | clustered: tensors |
-| --- | ---: | ---: | ---: |
-| chunk overlap at density 1e-2 (about the blog's per-step rate) | 0.0% | 66.7% | 99.0% |
-| chunk overlap at density 1e-4 | 5.6% | 99.6% | 100.0% |
-| first density with overlap under 50% | 2e-05 | 0.02 | not reached by 0.1 |
-| first density with overlap under 1% | 0.0005 | not reached by 0.1 | not reached by 0.1 |
-
-Mean chunk 64,560 bytes, so 32,280 bf16 elements per chunk; 5 seeds per cell. Against the checked curve, the chance a chunk has no change weighted by the actual chunk sizes (ADR 0007), the scattered points miss by at most 0.24 percentage points, and 0 of 16 cells fall outside the fixed tolerance. The plan's pre-registered curve `exp(-values_per_chunk x P)` misses by up to 9.1 points, with 4 of 16 cells outside (see Surprises).
-<!-- END sweep -->
-
-### Which tensors keep their chunks (chart 2)
+A Xet chunk is reused only if every byte in it is unchanged, and a chunk holds tens of thousands of bf16 elements. The sweep alters a fraction of a real checkpoint's elements by one ulp. When the changes are scattered, overlap is gone well before the change rates RL steps produce. When the same number of changes is packed into whole rows or whole tensors, most chunks survive. Error bars are 3 standard errors over 5 seeds. The dotted curve is the check the outer loop runs ([ADR 0007](docs/adr/0007-check-the-sweep-against-the-chunk-size-weighted-curve.md)).
 
 ![Per-tensor and per-kind unchanged elements against chunk overlap, for four pairs](docs/charts/unchanged-elements-vs-chunk-overlap.png)
 
-Each grey dot is one tensor and each blue dot one tensor kind. Large tensors whose changes are scattered sit on the dotted theory line. Points far above it have clustered changes. Frozen tensors sit at the left edge with full overlap. The embedding in the ajjyy pair changes in few, contiguous rows and keeps a large share of its chunks. Small tensors, such as norms, can fall below the line, because they share chunks with their neighbours and the curve assumes a tensor spans many chunks.
-
-### What the Hub stored for the third-party pairs
-
-<!-- BEGIN hub -->
-| pair | Hub: chunks of next file | Hub: chunks shared with base | Hub: bytes in shared terms | local: chunk overlap | local: dedup accepted by upload |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| ChenJakcy6/Qwen2-0.5B-GRPO-test steps 110 to 113 | 15,336 | 202 (1.32%) | 0.48% | 1.19% | 0.54% |
-| ajjyy/Qwen2-0.5B-GRPO-attempt1 steps 3150 to 3160 | 15,859 | 0 (0.00%) | 0.00% | 11.28% | 7.27% |
-<!-- END hub -->
-
-The Hub columns come from the CAS reconstruction API (`scripts/hub_reconstruction.py`): a chunk is shared when the next file's recipe points at the same xorb chunk as the base's. The ChenJakcy6 row reproduces the earlier research pass exactly, and the Hub's chunking of that file matches xet-core's (same Xet file hash). The ajjyy file was chunked by something else on the Hub (its Xet file hash differs from ours), and its recipe shows no dedup at all, so its Hub row is not comparable to the local measurement.
+Real checkpoints, tensor by tensor. Each grey dot is one tensor and each blue dot one tensor kind. Large tensors whose changes are scattered sit on the dotted theory line at zero. Frozen tensors sit at the left edge with full overlap. The embedding in the ajjyy pair changes in few, contiguous rows and keeps a large share of its chunks. Small tensors, such as norms, can fall below the line, because they share chunks with their neighbours and the curve assumes a tensor spans many chunks.
 
 ## Surprises
 
-1. **The pre-registered theory curve was wrong, and was replaced after measuring.** The plan fixed `exp(-values_per_chunk x P)`, with `values_per_chunk` the mean chunk size over 2 bytes, and a tolerance of 3 percentage points or 3 standard errors. At mid-range densities the scattered points fell outside it (see the sweep table). The cause is chunk-size variation: Xet chunks range from 8 KiB to 128 KiB, a chunk of `s` bytes survives with probability `(1-P)^(s/2)`, and the byte-weighted average of that is not its value at the mean size. Large chunks are both likelier to be hit and carry more bytes. The check now uses that byte-weighted average over the base's actual chunk sizes, with the same tolerance ([ADR 0007](docs/adr/0007-check-the-sweep-against-the-chunk-size-weighted-curve.md)). This curve was chosen after seeing the data. It has no free parameters, and a separate chunk-count prediction from the same model also matches. No verdict depends on either curve.
+1. **The pre-registered theory curve was wrong, and was replaced after measuring.** The plan fixed `exp(-values_per_chunk x P)`, with `values_per_chunk` the mean chunk size over 2 bytes, and a tolerance of 3 percentage points or 3 standard errors. At mid-range densities the scattered points fell outside it (see the sweep in [docs/results.md](docs/results.md)). The cause is chunk-size variation: Xet chunks range from 8 KiB to 128 KiB, a chunk of `s` bytes survives with probability `(1-P)^(s/2)`, and the byte-weighted average of that is not its value at the mean size. Large chunks are both likelier to be hit and carry more bytes. The check now uses that byte-weighted average over the base's actual chunk sizes, with the same tolerance ([ADR 0007](docs/adr/0007-check-the-sweep-against-the-chunk-size-weighted-curve.md)). This curve was chosen after seeing the data. It has no free parameters, and a separate chunk-count prediction from the same model also matches. No verdict depends on either curve.
 2. **The crates.io `hf-xet` 1.6.0 release over-reports dedup.** In that release, a dedup match that defrag prevention refuses is counted in `deduped_bytes` and then again as new data. So `deduped_bytes` overstates the dedup taken, and the reported file size exceeds the real one by exactly `defrag_prevented_dedup_bytes`. xet-core fixed this in #931, and every number here comes from xet-core at `d2f667c`, which includes the fix ([ADR 0006](docs/adr/0006-build-on-xet-core-at-d2f667c.md)). The fix changes only the accounting, not which chunks are sent: rerunning every pair on both versions gave byte-identical transferred bytes. `just e2e` asserts on every pair that the raw metrics now agree with what was sent ([ADR 0005](docs/adr/0005-measure-accepted-dedup-as-file-bytes-minus-new-bytes.md)).
 3. **A header that changes length costs more than one chunk.** When no content-defined boundary appears within 128 KiB, the chunker cuts at exactly 128 KiB. A byte shift propagates through runs of such forced cuts, and bf16 checkpoints have many of them (`next_max_size_chunks` in `results/overlap-*.json`). Our pairs keep the same header length, so this does not affect them.
 
@@ -188,7 +95,7 @@ just train --run run-a --steps 21 --seed 0
 just train --run run-b-frozen-half --steps 11 --seed 0 --freeze-first-layers 12
 just check   # inner loop: fmt, clippy, unit and property tests, golden chunker test, README staleness
 just e2e     # outer loop: sweep, every pair, oracles and invariants (needs a xet-core clone, XET_CORE_DIR)
-just report  # redraw charts and regenerate the tables in this README from results/
+just report  # redraw charts and regenerate this README's summaries and docs/results.md from results/
 ```
 
 <!-- BEGIN provenance -->

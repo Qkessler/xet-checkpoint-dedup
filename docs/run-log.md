@@ -4,7 +4,7 @@ Session link: not generated. Uploading a session export writes to the network, w
 
 ## Summary
 
-**Verdict: does not hold.** On all 46 checkpoint pairs measured, uploading the full next checkpoint to Xet transferred at least half of the anchor, and on our all-trainable run nearly all of it. That is far above the 3x-sparse-delta bar in ADR 0001. Chunk dedup only helps where changes cluster: freezing half the layers reuses about a third of each checkpoint, and that is still "does not hold". The README tables carry the numbers and are generated from `results/`.
+**Verdict: does not hold.** On all 46 checkpoint pairs measured, uploading the full next checkpoint to Xet transferred at least half of the anchor, and on our all-trainable run nearly all of it. That is far above the 3x-sparse-delta bar in ADR 0001. Chunk dedup only helps where changes cluster: freezing half the layers reuses about a third of each checkpoint, and that is still "does not hold". The README charts and `docs/results.md` tables carry the numbers and are generated from `results/`.
 
 **Surprising results, flagged:**
 
@@ -267,3 +267,29 @@ Decision: report both the local measurement (what xet-core 1.6.0 would transfer)
 **Ran.** ADR 0007 records the swap and that the curve was adopted after the data. The plan's tolerance line points at it. `e2e_checks.py` now gates on `size_aware_theory_chunk_overlap_fraction` and prints the plan's curve gap for comparison. `report.py` labels both curves in chart 1, and the sweep text reports the cells outside tolerance for both. README surprise 1 now describes the replacement. The Rust tool is unchanged, so `results/sweep.json` is unchanged too: it already carried both curves.
 
 **Saw.** Against the new curve, all 16 scattered cells are inside the fixed tolerance, with a worst gap of a quarter of a percentage point. Against the plan's curve, 4 cells remain outside, as before. No verdict, table or chart value moves, because verdicts never use the curve.
+
+## 2026-10-04 README opens with the claim and its value (owner request)
+
+**Asked.** The owner could not see the end-to-end value of the work from the README or the explainer. They asked for the README to open with the claim and the business value of confirming or refuting it, to use charts instead of tables, and to move the tables to a separate file.
+
+**Ran.**
+
+- The README now opens with the title, the claim (both blog quotes, with "bucket" and "anchor" defined), then "Why it matters", then the answer, then where chunk dedup works.
+- "Why it matters" is a generated block. It gives the per-step cost of a full upload against the sparse delta, a 1,000-step projection labelled as one, and who acts on the claim and what changes for them.
+- Two new charts: the cost per weight sync (`docs/charts/cost-per-weight-sync.png`) and every pair placed against the verdict rule (`docs/charts/pairs-against-verdict-rule.png`).
+- Every table moved to `docs/results.md`, which `report.py` generates whole. `report.py --check` now fails if either README.md or `docs/results.md` is stale.
+- Checked with `gh` (read-only): TRL #5417 and #5937 were closed on 2026-09-14 and never merged.
+
+### Review of the README restructure
+
+- Undefined "anchor" and "Hub bucket": fixed, both defined in the claim section.
+- A dedup-framed title: fixed, it is now cost-framed.
+- "36x" (a ratio of medians) disagreed with the 36.6x per-pair median in `docs/results.md`: fixed, both use the per-pair median.
+- "Buckets bill on deduplicated bytes": fixed to "Enterprise buckets", which is what the background source says.
+- The 98.6% storage share is before compression: fixed, it now says so, and the verdict note says that both sides count bytes before compression.
+- The stale "(chart 1)" reference in the answer block: fixed, it now points at "Where chunk dedup works".
+- An under-3x but over-50% pair had no stated rule: fixed. The README says "holds" is tested first, as `verdict()` does.
+- "bytes sent" on the chart axes: fixed to "transferred bytes" (CONTEXT.md).
+- Overplotting in the verdict chart, and the cost chart omitting third-party pairs: noted in the captions, which point at `docs/results.md`.
+- The PR close date and "not yet released" are facts typed into `report.py`, not results: kept. They were checked with `gh` and against crates.io, and they are dated.
+- Charts are not staleness-checked: kept as before. `just report` always redraws them.

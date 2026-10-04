@@ -1,8 +1,9 @@
 """Generate the README charts and tables from results/*.json.
 
-`report.py` redraws docs/charts/*.png and rewrites every README block between `<!-- BEGIN name -->` and
-`<!-- END name -->` markers. `report.py --check` regenerates the README blocks in memory and fails if README.md
-differs or a block is missing, so a stale README breaks `just check`. Charts are not compared.
+`report.py` redraws docs/charts/*.png, rewrites every README block between `<!-- BEGIN name -->` and
+`<!-- END name -->` markers, and rewrites docs/results.md, which holds every table. `report.py --check` regenerates
+both in memory and fails if either differs or a README block is missing, so a stale README breaks `just check`.
+Charts are not compared.
 
 Verdicts follow ADR 0001: transferred bytes within 3x of the sparse delta "holds", at least 50% of the anchor "does
 not hold", anything between "depends".
@@ -274,7 +275,7 @@ def answerBlock(pairs: list[dict], sweep: dict) -> str:
     lines.append(
         f"- The reason is arithmetic, not a defect: a chunk holds about {sweep['result']['values_per_chunk']:,.0f} bf16 "
         f"elements, so when 1% of elements change at random, {percent(scatteredAtOnePercent, 2)} of bytes stay in "
-        f"reusable chunks (chart 1). Chunk dedup needs changes to cluster."
+        f'reusable chunks (see "Where chunk dedup works"). Chunk dedup needs changes to cluster.'
     )
     return "\n".join(lines)
 
@@ -485,14 +486,206 @@ def drawKindChart(sweep: dict, path: Path):
     plt.close(figure)
 
 
-def buildBlocks(sweep: dict) -> dict:
-    pairs = loadPairs()
+def consecutivePairs(pairs: list[dict], source: str) -> list[dict]:
+    return [pair for pair in pairs if pair["source"] == source and pair["step_gap"] == 1]
+
+
+def valueBlock(pairs: list[dict]) -> str:
+    trainable = consecutivePairs(pairs, "run-a")
+    frozen = consecutivePairs(pairs, "run-b-frozen-half")
+    sentPerStep = statistics.median(pair["transferred_bytes"] for pair in trainable)
+    medianRatio = statistics.median(pair["transferred_bytes"] / pair["sparse_delta_bytes"] for pair in trainable)
+    sparsePerStep = statistics.median(pair["sparse_delta_bytes"] for pair in trainable)
+    storedShare = statistics.median(1 - pair["accepted_dedup_bytes"] / pair["anchor_bytes"] for pair in trainable)
+    frozenReuse = statistics.median(pair["accepted_dedup_bytes"] / pair["anchor_bytes"] for pair in frozen)
+    projectedSteps = 1000
+    return "\n".join(
+        [
+            "If the claim held, an RL team could skip the sparse encoding and upload the whole checkpoint every step, "
+            "and Xet would make that cheap. It does not. On our own run, which uses the blog's setup at its most "
+            f"favourable, a full upload sends a median **{megabytes(sentPerStep)} per step**, against "
+            f"**{megabytes(sparsePerStep)}** for the sparse delta, a median of **{medianRatio:.1f}x more** per pair on "
+            f"every weight sync. Over a {projectedSteps:,}-step run that projects to about "
+            f"{sentPerStep * projectedSteps / 1e9:,.0f} GB instead of {sparsePerStep * projectedSteps / 1e9:,.0f} GB "
+            "(median step x step count).",
+            "",
+            "Who acts on the claim, and what this measurement changes for them:",
+            "",
+            "- **RL teams syncing weights through a Hub bucket.** Keep the sparse encoding: Xet chunk dedup does not "
+            "replace it. The blog's TRL pull requests for sparse sync ([#5417](https://github.com/huggingface/trl/pull/5417), "
+            "[#5937](https://github.com/huggingface/trl/pull/5937)) were closed without merging on 2026-09-14, so TRL does not ship the sparse path today, and a user who follows the "
+            "aside pays the full cost.",
+            '- **Anyone keeping checkpoint history in a bucket.** The blog also says consecutive anchors "share chunks at '
+            'rest". Enterprise buckets bill on deduplicated bytes, and each new checkpoint of our run adds a median '
+            f"{percent(storedShare)} of its size to storage as new chunks (counted before Xet's compression).",
+            "- **Xet and TRL maintainers.** The measurement shows where chunk dedup does pay: when whole regions stay "
+            f"bit-identical, as with frozen layers, where a median {percent(frozenReuse)} of each checkpoint was reused. "
+            "It also found that the released `hf-xet` 1.6.0 reports inflated dedup and file sizes to its callers, which "
+            "is fixed in xet-core but not yet released.",
+        ]
+    )
+
+
+def drawValueChart(pairs: list[dict], path: Path):
+    groups = [
+        ("ours, all layers trainable", consecutivePairs(pairs, "run-a")),
+        ("ours, half the layers frozen", consecutivePairs(pairs, "run-b-frozen-half")),
+    ]
+    bars = [
+        ("full checkpoint", lambda pair: pair["anchor_bytes"], "#b9b8b2"),
+        ("sent by a full upload, after Xet dedup", lambda pair: pair["transferred_bytes"], modeColors["rows"]),
+        ("sent as a sparse delta", lambda pair: pair["sparse_delta_bytes"], modeColors["scattered"]),
+    ]
+    figure, axes = plt.subplots(figsize=(8, 3.8), dpi=150, facecolor=surface)
+    styleAxes(axes)
+    axes.grid(True, axis="x", color=gridColor, linewidth=0.8)
+    axes.grid(False, axis="y")
+    barHeight = 0.26
+    for groupIndex, (groupLabel, groupPairs) in enumerate(groups):
+        for barIndex, (barLabel, value, color) in enumerate(bars):
+            megabytesPerStep = statistics.median(value(pair) for pair in groupPairs) / 1e6
+            position = groupIndex - (barIndex - 1) * barHeight
+            axes.barh(
+                position,
+                megabytesPerStep,
+                height=barHeight - 0.04,
+                color=color,
+                label=barLabel if groupIndex == 0 else None,
+            )
+            axes.text(
+                megabytesPerStep + 8,
+                position,
+                f"{megabytesPerStep:,.0f} MB",
+                va="center",
+                fontsize=8,
+                color=textPrimary,
+            )
+    axes.set_yticks(range(len(groups)), [label for label, _ in groups], color=textPrimary, fontsize=9)
+    axes.invert_yaxis()
+    axes.set_xlim(0, 1150)
+    axes.set_xlabel("bytes per weight sync, median over one-step pairs (MB)", color=textPrimary, fontsize=9)
+    axes.set_title("What one RL step costs to sync, Qwen2.5-0.5B", color=textPrimary, fontsize=11, loc="left")
+    axes.legend(
+        fontsize=8, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.24), ncol=3, labelcolor=textSecondary
+    )
+    figure.tight_layout()
+    figure.savefig(path, facecolor=surface, metadata={"Software": None})
+    plt.close(figure)
+
+
+def drawVerdictChart(pairs: list[dict], path: Path):
+    sourceStyles = {
+        "run-a": ("ours, all layers trainable", modeColors["scattered"]),
+        "run-b-frozen-half": ("ours, half the layers frozen", modeColors["rows"]),
+    }
+    figure, axes = plt.subplots(figsize=(8, 4.8), dpi=150, facecolor=surface)
+    styleAxes(axes)
+    xMaximum = 2000
+    axes.axvspan(1, HOLDS_WITHIN_SPARSE_MULTIPLE, color="#e3f4ec", zorder=0)
+    axes.fill_between([HOLDS_WITHIN_SPARSE_MULTIPLE, xMaximum], 50, 100, color="#fbe6e0", zorder=0)
+    axes.fill_between([HOLDS_WITHIN_SPARSE_MULTIPLE, xMaximum], 0, 50, color="#fdf3dc", zorder=0)
+    axes.axvline(HOLDS_WITHIN_SPARSE_MULTIPLE, color=textPrimary, linestyle="--", linewidth=1)
+    axes.plot([HOLDS_WITHIN_SPARSE_MULTIPLE, xMaximum], [50, 50], color=textPrimary, linestyle="--", linewidth=1)
+    axes.text(1.7, 4, "holds", ha="center", fontsize=9, color=textPrimary, fontweight="bold")
+    axes.text(
+        3.4, 53, "does not hold: at least half the checkpoint is sent", fontsize=9, color=textPrimary, fontweight="bold"
+    )
+    axes.text(3.4, 4, "depends", fontsize=9, color=textPrimary, fontweight="bold")
+    for source, (label, color) in sourceStyles.items():
+        sourcePairs = [pair for pair in pairs if pair["source"] == source]
+        axes.scatter(
+            [pair["transferred_bytes"] / pair["sparse_delta_bytes"] for pair in sourcePairs],
+            [100 * pair["transferred_bytes"] / pair["anchor_bytes"] for pair in sourcePairs],
+            s=36,
+            color=color,
+            edgecolor=surface,
+            linewidth=1.5,
+            label=label,
+            zorder=3,
+        )
+    thirdParty = [pair for pair in pairs if pair["pair"] in thirdPartyPairs]
+    axes.scatter(
+        [pair["transferred_bytes"] / pair["sparse_delta_bytes"] for pair in thirdParty],
+        [100 * pair["transferred_bytes"] / pair["anchor_bytes"] for pair in thirdParty],
+        s=36,
+        color=modeColors["tensors"],
+        edgecolor=surface,
+        linewidth=1.5,
+        label="third-party Hub checkpoints",
+        zorder=3,
+    )
+    axes.set_xscale("log")
+    axes.set_xlim(1, xMaximum)
+    axes.set_xticks([1, 3, 10, 30, 100, 300, 1000], ["1x", "3x", "10x", "30x", "100x", "300x", "1000x"])
+    axes.minorticks_off()
+    axes.set_ylim(0, 103)
+    axes.set_xlabel(
+        "transferred bytes of a full upload, as a multiple of the sparse delta", color=textPrimary, fontsize=9
+    )
+    axes.set_ylabel("transferred bytes, % of the full checkpoint", color=textPrimary, fontsize=9)
+    axes.set_title(
+        f"Every checkpoint pair against the verdict rule ({len(pairs)} pairs)",
+        color=textPrimary,
+        fontsize=11,
+        loc="left",
+    )
+    axes.legend(
+        fontsize=8, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=3, labelcolor=textSecondary
+    )
+    figure.tight_layout()
+    figure.savefig(path, facecolor=surface, metadata={"Software": None})
+    plt.close(figure)
+
+
+def resultsDocument(pairs: list[dict], sweep: dict) -> str:
+    return "\n".join(
+        [
+            "# Results tables",
+            "",
+            "Generated by `scripts/report.py` from `results/*.json`. Do not edit by hand: `just report` rewrites this file, "
+            "and `just check` fails if it is stale. The README carries the charts; this file carries the numbers behind them.",
+            "",
+            "## Verdict rule",
+            "",
+            "Fixed before measuring ([ADR 0001](adr/0001-test-the-implied-claim-with-preset-thresholds.md)): transferred bytes "
+            "within 3x of the sparse delta **holds**, at least 50% of the anchor **does not hold**, anything between "
+            "**depends**. The sparse delta is changed elements x 6 bytes (a 4-byte index plus a 2-byte bf16 value).",
+            "",
+            "## Per checkpoint pair",
+            "",
+            pairsBlock(pairs),
+            "",
+            '"Chunk overlap" is the share of the next file\'s bytes in chunks whose hash also appears in the base. '
+            '"Transferred" is `new_bytes + shard_bytes_uploaded` from Xet\'s own `DeduplicationMetrics` after uploading the '
+            'base and then the next checkpoint to the same local store. The "defrag gap" is chunk overlap that the upload '
+            "path re-sent anyway, because defrag prevention refused short matches.",
+            "",
+            "## Every pair measured",
+            "",
+            allPairsBlock(pairs),
+            "",
+            "## Perturbation sweep",
+            "",
+            sweepBlock(sweep),
+            "",
+            "## What the Hub stored for the third-party pairs",
+            "",
+            hubBlock(pairs),
+            "",
+            "The Hub columns come from the CAS reconstruction API (`scripts/hub_reconstruction.py`). The ChenJakcy6 file's "
+            "chunking on the Hub matches xet-core's (same Xet file hash); the ajjyy file was chunked differently on the Hub and "
+            "shows no dedup at all, so its Hub row is not comparable to the local measurement.",
+            "",
+            provenanceBlock(),
+            "",
+        ]
+    )
+
+
+def buildBlocks(pairs: list[dict], sweep: dict) -> dict:
     return {
+        "value": valueBlock(pairs),
         "answer": answerBlock(pairs, sweep),
-        "pairs": pairsBlock(pairs),
-        "all-pairs": allPairsBlock(pairs),
-        "sweep": sweepBlock(sweep),
-        "hub": hubBlock(pairs),
         "provenance": provenanceBlock(),
     }
 
@@ -509,23 +702,43 @@ def renderReadme(readme: str, blocks: dict) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="fail if README.md is stale; draw nothing")
+    parser.add_argument(
+        "--check", action="store_true", help="fail if README.md or docs/results.md is stale; draw nothing"
+    )
     args = parser.parse_args()
     readmePath = repoRoot / "README.md"
+    resultsDocumentPath = repoRoot / "docs" / "results.md"
     readme = readmePath.read_text()
     sweep = loadResult("sweep")
-    rendered = renderReadme(readme, buildBlocks(sweep))
+    pairs = loadPairs()
+    rendered = renderReadme(readme, buildBlocks(pairs, sweep))
+    renderedResults = resultsDocument(pairs, sweep)
     if args.check:
-        if rendered != readme:
-            print("README.md is stale: run `just report`", file=sys.stderr)
+        stale = [
+            name
+            for name, current, expected in (
+                ("README.md", readme, rendered),
+                (
+                    "docs/results.md",
+                    resultsDocumentPath.read_text() if resultsDocumentPath.exists() else "",
+                    renderedResults,
+                ),
+            )
+            if current != expected
+        ]
+        if stale:
+            print(f"{', '.join(stale)} stale: run `just report`", file=sys.stderr)
             return 1
-        print("README.md is up to date with results/")
+        print("README.md and docs/results.md are up to date with results/")
         return 0
     matplotlib.use("Agg")
     chartsDir.mkdir(parents=True, exist_ok=True)
+    drawValueChart(pairs, chartsDir / "cost-per-weight-sync.png")
+    drawVerdictChart(pairs, chartsDir / "pairs-against-verdict-rule.png")
     drawSweepChart(sweep, chartsDir / "chunk-overlap-vs-density.png")
     drawKindChart(sweep, chartsDir / "unchanged-elements-vs-chunk-overlap.png")
     readmePath.write_text(rendered)
+    resultsDocumentPath.write_text(renderedResults)
     return 0
 
 

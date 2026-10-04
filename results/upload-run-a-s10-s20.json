@@ -2,7 +2,7 @@
   "name": "upload-run-a-s10-s20",
   "kind": "upload",
   "tool": {
-    "git_commit": "ce32ad9236e34e9a4a473f15e909c1fed4e0ab88",
+    "git_commit": "b5a70cf58590981fba4015ef5744bc6900548b7d",
     "git_dirty": false,
     "crate_versions": {
       "hf-xet": "1.6.0+git.d2f667c",

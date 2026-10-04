@@ -1,0 +1,62 @@
+diff --git a/docs/hub/xet/using-xet-storage.md b/docs/hub/xet/using-xet-storage.md
+index 137085b..921a83c 100644
+--- a/docs/hub/xet/using-xet-storage.md
++++ b/docs/hub/xet/using-xet-storage.md
+@@ -155,8 +155,8 @@ By default, `xet-core` uses adaptive concurrency — dynamically adjusting paral
+ | Environment Variable | Default | Description |
+ |---|---|---|
+ | `HF_XET_CLIENT_ENABLE_ADAPTIVE_CONCURRENCY` | `true` | Enable or disable adaptive concurrency control. When disabled, concurrency stays at the initial value. |
+-| `HF_XET_CLIENT_AC_INITIAL_UPLOAD_CONCURRENCY` | `1` | Starting number of concurrent upload streams. HP mode: `16`. |
+-| `HF_XET_CLIENT_AC_INITIAL_DOWNLOAD_CONCURRENCY` | `1` | Starting number of concurrent download streams. HP mode: `16`. |
++| `HF_XET_CLIENT_AC_INITIAL_UPLOAD_CONCURRENCY` | `2` | Starting number of concurrent upload streams. HP mode: `16`. |
++| `HF_XET_CLIENT_AC_INITIAL_DOWNLOAD_CONCURRENCY` | `4` | Starting number of concurrent download streams. HP mode: `16`. |
+ | `HF_XET_CLIENT_AC_MIN_UPLOAD_CONCURRENCY` | `1` | Lower bound for upload concurrency. HP mode: `4`. |
+ | `HF_XET_CLIENT_AC_MIN_DOWNLOAD_CONCURRENCY` | `1` | Lower bound for download concurrency. HP mode: `4`. |
+ | `HF_XET_CLIENT_AC_MAX_UPLOAD_CONCURRENCY` | `64` | Upper bound for upload concurrency. HP mode: `124`. |
+@@ -178,7 +178,7 @@ By default, `xet-core` uses adaptive concurrency — dynamically adjusting paral
+ | `HF_XET_CLIENT_RETRY_BASE_DELAY` | `3000ms` | Base delay between retries (with exponential backoff). |
+ | `HF_XET_CLIENT_RETRY_MAX_DURATION` | `360s` | Maximum total time to spend retrying a request. |
+ | `HF_XET_CLIENT_CONNECT_TIMEOUT` | `60s` | TCP connection timeout. |
+-| `HF_XET_CLIENT_READ_TIMEOUT` | `120s` | Read timeout for HTTP responses. |
++| `HF_XET_CLIENT_READ_TIMEOUT` | `300s` | Read timeout for HTTP responses. |
+ | `HF_XET_CLIENT_IDLE_CONNECTION_TIMEOUT` | `60s` | Timeout before idle connections are closed. |
+ | `HF_XET_CLIENT_MAX_IDLE_CONNECTIONS` | `16` | Maximum number of idle connections in the pool. |
+ 
+@@ -194,15 +194,15 @@ By default, `xet-core` uses adaptive concurrency — dynamically adjusting paral
+ 
+ ### Download Buffers
+ 
+-These control memory usage during downloads. `HF_XET_HIGH_PERFORMANCE=1` raises these significantly.
++These control memory usage during downloads. The three buffer defaults, in both modes, are derived from usable memory (the smaller of host RAM and the cgroup limit); set `HF_XET_DISABLE_MEMORY_DERIVED_DOWNLOAD_BUFFERS=1` to use the fixed fallbacks. `HF_XET_HIGH_PERFORMANCE=1` raises these significantly.
+ 
+ | Environment Variable | Default | HP Mode | Description |
+ |---|---|---|---|
+ | `HF_XET_RECONSTRUCTION_MIN_RECONSTRUCTION_FETCH_SIZE` | `256mb` | `1gb` | Minimum fetch size for reconstruction requests. |
+ | `HF_XET_RECONSTRUCTION_MAX_RECONSTRUCTION_FETCH_SIZE` | `8gb` | `16gb` | Maximum fetch size for reconstruction requests. |
+-| `HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_SIZE` | `2gb` | `16gb` | Total download buffer size. |
+-| `HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_PERFILE_SIZE` | `512mb` | `2gb` | Per-file download buffer size. |
+-| `HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_LIMIT` | `8gb` | `64gb` | Hard limit on total download buffer memory. |
++| `HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_SIZE` | usable memory / 16, clamped to `64mb`-`16gb` (`2gb` if memory is unknown) | usable memory / 8, same clamps (`16gb` if memory is unknown) | Total download buffer size. |
++| `HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_PERFILE_SIZE` | usable memory / 64, clamped to `16mb`-`2gb` (`512mb` if memory is unknown) | usable memory / 32, same clamps (`2gb` if memory is unknown) | Per-file download buffer size. |
++| `HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_LIMIT` | usable memory / 4, clamped to `264mb`-`64gb` (`8gb` if memory is unknown) | usable memory / 2, same clamps (`64gb` if memory is unknown) | Hard limit on total download buffer memory. |
+ | `HF_XET_RECONSTRUCTION_TARGET_BLOCK_COMPLETION_TIME` | `15m` | — | Target time for completing a prefetch block. Used to determine how much data to prefetch ahead during downloads. |
+ | `HF_XET_RECONSTRUCTION_MIN_PREFETCH_BUFFER` | `1gb` | — | Minimum amount of data to keep prefetched during downloads, regardless of estimated completion time. |
+ 
+@@ -236,6 +236,17 @@ The **chunk cache** stores downloaded byte ranges (chunks) on disk so overlappin
+ | `HF_XET_LOG_DIR_MIN_DELETION_AGE` | `1d` | Minimum age before a log file can be deleted during cleanup. |
+ | `HF_XET_LOG_DIR_MAX_RETENTION_AGE` | `14d` | Maximum age for log files. Files older than this are always deleted during cleanup. |
+ 
++### Telemetry
++
++| Environment Variable | Default | Description |
++|---|---|---|
++| `HF_XET_TELEMETRY_ENABLED` | `true` | Send one anonymous transfer summary per upload or download (byte counts, dedup effectiveness, throughput; no names, paths or hashes). Also disabled by `HF_HUB_DISABLE_TELEMETRY`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE`. |
++| `HF_XET_TELEMETRY_HEARTBEAT_AFTER` | `5m` | How long a transfer must run before it also sends periodic heartbeats. `0` disables heartbeats. |
++| `HF_XET_TELEMETRY_HEARTBEAT_INTERVAL` | `5m` | Interval between heartbeats once they start. |
++| `HF_XET_TELEMETRY_REQUEST_TIMEOUT` | `5s` | Time budget for one telemetry request, including connection setup. |
++| `HF_XET_TELEMETRY_FINAL_FLUSH_TIMEOUT` | `2s` | How long a finished transfer waits for its summary to be delivered. `0` sends it fully detached. |
++| `HF_XET_TELEMETRY_MAX_IN_FLIGHT` | `32` | Process-wide cap on concurrent telemetry requests; summaries beyond it are dropped. |
++
+ ## Current Limitations
+ 
+ While Xet brings fine-grained deduplication and enhanced performance to Git-based storage, some features and platform compatibilities are still in development. As a result, keep the following constraints in mind when working with a Xet-enabled repository:

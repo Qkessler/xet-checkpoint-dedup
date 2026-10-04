@@ -1,0 +1,49 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 40c191b..2d50d01 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -236,6 +236,6 @@ pub type Result<T> = std::result::Result<T, DataError>;
+ 
+ ## Debugging
+ 
+-Use `RUST_BACKTRACE=full`, `RUST_LOG=info` (or `debug` / `trace`), and `HF_XET_LOG_FILE=/tmp/xet.log`.
++Use `RUST_BACKTRACE=full`, `RUST_LOG=info` (or `debug` / `trace`), and `HF_XET_LOG_DEST=/tmp/xet.log`.
+ 
+ See [diagnostic scripts](scripts/diag/README.md) for symbol/trace capture. The [smoke tests](scripts/smoke_tests/README.md) exercise a released or locally built `hf_xet` wheel against the real Hub and need an `HF_TOKEN`; they are a release check, not part of routine verification.
+diff --git a/README.md b/README.md
+index e64a5c5..6dd604e 100644
+--- a/README.md
++++ b/README.md
+@@ -98,7 +98,7 @@ Quick debugging environment variables:
+ ```bash
+ RUST_BACKTRACE=full          # full Rust backtraces on panic
+ RUST_LOG=info                # enable hf-xet logging
+-HF_XET_LOG_FILE=/tmp/xet.log # write logs to a file (defaults to stdout)
++HF_XET_LOG_DEST=/tmp/xet.log # write logs to this file (a path ending in / is a directory; empty means console; default is the logs/ dir in the Xet cache)
+ ```
+ 
+ ### Telemetry
+diff --git a/scripts/diag/README.md b/scripts/diag/README.md
+index 26d7345..5532d04 100644
+--- a/scripts/diag/README.md
++++ b/scripts/diag/README.md
+@@ -189,5 +189,5 @@ manually:
+ ```bash
+ RUST_BACKTRACE=full          # full Rust backtraces on panic
+ RUST_LOG=info                # enable hf-xet logging
+-HF_XET_LOG_FILE=/tmp/xet.log # write logs to a file (defaults to stdout)
++HF_XET_LOG_DEST=/tmp/xet.log # write logs to this file (a path ending in / is a directory; empty means console; default is the logs/ dir in the Xet cache)
+ ```
+diff --git a/xet_pkg/src/lib.rs b/xet_pkg/src/lib.rs
+index 0e5eedf..a76bed3 100644
+--- a/xet_pkg/src/lib.rs
++++ b/xet_pkg/src/lib.rs
+@@ -76,7 +76,7 @@ pub mod xet_session;
+ 
+ /// Initialize the global tracing subscriber using xet_runtime defaults.
+ ///
+-/// Reads `HF_XET_LOG_FILE` / `RUST_LOG` environment variables.  Repeated calls
++/// Reads `HF_XET_LOG_DEST` / `RUST_LOG` environment variables.  Repeated calls
+ /// are no-ops — the global subscriber is installed only once.
+ #[cfg(not(target_family = "wasm"))]
+ pub fn init_logging(version_info: String) {

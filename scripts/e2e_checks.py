@@ -9,9 +9,12 @@ def load(path: str) -> dict:
     return json.loads(Path(path).read_text())
 
 
+failures = []
+
+
 def fail(message: str):
     print(f"INVARIANT BROKEN: {message}", file=sys.stderr)
-    sys.exit(1)
+    failures.append(message)
 
 
 def checkAttribution(result: dict, label: str):
@@ -36,11 +39,74 @@ def selfOverlap(path: str):
     print(f"ok self-overlap {path}")
 
 
+def sweep(path: str):
+    """Scattered cells within max(3 pp, 3 standard errors) of exp(-values_per_chunk * P); clustered above scattered.
+
+    The tolerance and the curve are fixed in docs/plan.md and are never tuned. The size-aware curve is reported
+    alongside for diagnosis only.
+    """
+    report = load(path)["result"]
+    cells = {(cell["mode"], cell["density"]): cell for cell in report["cells"]}
+    for (mode, density), cell in sorted(cells.items()):
+        if mode != "scattered":
+            continue
+        tolerance = max(0.03, 3 * cell["standard_error"])
+        mean = cell["mean_chunk_overlap_fraction"]
+        plainGap = mean - cell["theory_chunk_overlap_fraction"]
+        sizeAwareGap = mean - cell["size_aware_theory_chunk_overlap_fraction"]
+        verdict = "ok" if abs(plainGap) <= tolerance else "OUTSIDE"
+        print(
+            f"  scattered {density:7.0e} mean {mean:.4f} theory gap {plainGap:+.4f} "
+            f"size-aware gap {sizeAwareGap:+.4f} tolerance {tolerance:.4f} {verdict}"
+        )
+        if abs(plainGap) > tolerance:
+            fail(f"{path}: scattered density {density:g} is {plainGap:+.4f} from exp(-values_per_chunk * P), tolerance {tolerance:.4f}")
+        for clusteredMode in ("rows", "tensors"):
+            clustered = cells[(clusteredMode, density)]["mean_chunk_overlap_fraction"]
+            if not clustered > mean:
+                fail(f"{path}: {clusteredMode} overlap {clustered:.4f} is not above scattered {mean:.4f} at density {density:g}")
+    print(f"done sweep {path}")
+
+
+def sweepPoint(overlapPath: str, sweepPath: str, mode: str, density: str, seed: str):
+    """The on-disk perturb + overlap path gives exactly the in-memory sweep's chunk overlap for the same point."""
+    overlap = load(overlapPath)
+    checkAttribution(overlap, overlapPath)
+    onDisk = overlap["result"]["whole_file"]["chunk_overlap_bytes"]
+    matching = [
+        point
+        for point in load(sweepPath)["result"]["points"]
+        if point["mode"] == mode and abs(point["density"] - float(density)) < 1e-15 and point["seed"] == int(seed)
+    ]
+    if len(matching) != 1:
+        fail(f"{sweepPath}: expected one point for {mode} {density} seed {seed}, found {len(matching)}")
+        return
+    if matching[0]["chunk_overlap_bytes"] != onDisk:
+        fail(f"{overlapPath}: on-disk overlap {onDisk} != sweep point {matching[0]['chunk_overlap_bytes']}")
+    print(f"ok sweep-point {overlapPath} matches {sweepPath}")
+
+
+def oracleChunkOverlap(overlapPath: str, oracleBytes: str):
+    """Oracle 2: whole-file chunk overlap from xet-core's chunk example plus sort and join equals ours exactly."""
+    ours = load(overlapPath)["result"]["whole_file"]["chunk_overlap_bytes"]
+    if ours != int(oracleBytes):
+        fail(f"{overlapPath}: overlap {ours} != xet-core chunk example + join {oracleBytes}")
+    print(f"ok oracle-chunk-overlap {overlapPath} ({ours} bytes)")
+
+
 def main():
-    command, *paths = sys.argv[1:]
-    checks = {"self-overlap": selfOverlap}
-    for path in paths:
-        checks[command](path)
+    command, *arguments = sys.argv[1:]
+    perPath = {"self-overlap": selfOverlap, "sweep": sweep}
+    if command in perPath:
+        for path in arguments:
+            perPath[command](path)
+    elif command == "sweep-point":
+        sweepPoint(*arguments)
+    elif command == "oracle-chunk-overlap":
+        oracleChunkOverlap(*arguments)
+    else:
+        raise SystemExit(f"unknown check {command}")
+    sys.exit(1 if failures else 0)
 
 
 if __name__ == "__main__":

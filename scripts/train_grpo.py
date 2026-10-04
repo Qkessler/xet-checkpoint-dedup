@@ -165,7 +165,7 @@ def main():
         "per_device_train_batch_size": 4,
         "max_completion_length": 48,
         "master_weights": "fp32",
-        "snapshot_dtype": "bf16",
+        "checkpoint_dtype": "bf16",
         "library_versions": {library: version(library) for library in libraries},
         "step_seconds": [round(seconds, 1) for seconds in snapshots.stepSeconds],
     }

@@ -3,8 +3,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use ckpt_dedup::layout::CheckpointLayout;
 use ckpt_dedup::overlap::{OverlapReport, RollupRow, measure_overlap};
+use ckpt_dedup::perturb::{PerturbMode, perturb};
 use ckpt_dedup::results::{InputStamp, repo_root, write_result};
+use ckpt_dedup::sweep::{SweepPlan, SweepReport, default_densities, run_sweep};
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -30,6 +33,31 @@ enum Command {
         #[arg(long)]
         per_tensor: bool,
     },
+    /// Write a copy of a bf16 checkpoint with a fraction of its elements moved by one ulp.
+    Perturb {
+        input: PathBuf,
+        /// Fraction of BF16 elements to alter, in [0, 1].
+        #[arg(long)]
+        density: f64,
+        #[arg(long, value_enum)]
+        mode: PerturbMode,
+        #[arg(long)]
+        seed: u64,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Chunk overlap of perturbed copies against the original, over densities 1e-6 to 1e-1, every mode, and seeds.
+    Sweep {
+        input: PathBuf,
+        #[arg(long)]
+        name: String,
+        /// Seeds per (mode, density) cell: 0..seed_count.
+        #[arg(long, default_value_t = 5)]
+        seed_count: u64,
+        /// Worker threads. Each holds one copy of the input in memory.
+        #[arg(long, default_value_t = 8)]
+        workers: usize,
+    },
 }
 
 fn main() -> Result<()> {
@@ -41,6 +69,19 @@ fn main() -> Result<()> {
             name,
             per_tensor,
         } => run_overlap(&cli.results_dir, &base, &next, &name, per_tensor),
+        Command::Perturb {
+            input,
+            density,
+            mode,
+            seed,
+            output,
+        } => run_perturb(&input, density, mode, seed, &output),
+        Command::Sweep {
+            input,
+            name,
+            seed_count,
+            workers,
+        } => run_sweep_command(&cli.results_dir, &input, &name, seed_count, workers),
     }
 }
 
@@ -60,6 +101,52 @@ fn run_overlap(results_dir: &Path, base: &Path, next: &Path, name: &str, per_ten
     print_overlap(&report, per_tensor);
     println!("wrote {}", path.display());
     Ok(())
+}
+
+fn run_perturb(input: &Path, density: f64, mode: PerturbMode, seed: u64, output: &Path) -> Result<()> {
+    let mut file = read_input(input)?;
+    let layout = CheckpointLayout::parse(&file).context("parsing the safetensors header")?;
+    let summary = perturb(&mut file, &layout, density, mode, seed)?;
+    std::fs::write(output, &file).with_context(|| format!("writing {}", output.display()))?;
+    println!("{}", serde_json::to_string(&summary)?);
+    Ok(())
+}
+
+fn run_sweep_command(results_dir: &Path, input: &Path, name: &str, seed_count: u64, workers: usize) -> Result<()> {
+    let base_file = read_input(input)?;
+    let plan = SweepPlan {
+        densities: default_densities(),
+        modes: vec![PerturbMode::Scattered, PerturbMode::Rows, PerturbMode::Tensors],
+        seeds: (0..seed_count).collect(),
+    };
+    let report = run_sweep(&base_file, &plan, workers)?;
+    let inputs = [InputStamp::of("base", input, &base_file)];
+    let path = write_result(results_dir, name, "sweep", &inputs, None, &report)?;
+    print_sweep(&report);
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn print_sweep(report: &SweepReport) {
+    println!(
+        "values per chunk {:.1} (mean base chunk {:.0} bytes)",
+        report.values_per_chunk, report.base_mean_chunk_bytes
+    );
+    println!(
+        "{:<10} {:>9} {:>10} {:>10} {:>10} {:>10}",
+        "mode", "density", "mean", "stderr", "theory", "size-aware"
+    );
+    for cell in &report.cells {
+        println!(
+            "{:<10} {:>9.0e} {:>10.6} {:>10.6} {:>10.6} {:>10.6}",
+            format!("{:?}", cell.mode).to_lowercase(),
+            cell.density,
+            cell.mean_chunk_overlap_fraction,
+            cell.standard_error,
+            cell.theory_chunk_overlap_fraction,
+            cell.size_aware_theory_chunk_overlap_fraction
+        );
+    }
 }
 
 fn format_fraction(fraction: Option<f64>) -> String {

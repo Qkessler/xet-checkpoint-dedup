@@ -70,3 +70,40 @@ Spec:
 - Flipping the last bit of Inf gives NaN: fixed. `perturb` returns `NonFiniteElement` instead, with a unit test. Synthetic test data is now always finite.
 - `altered_elements` reports the target count: rebutted. Indices are distinct by construction, and a unit test counts the changed elements independently.
 - The sparse delta generalised to `4 + element bytes`, and the extra `--results-dir` and `git_dirty`: kept. For bf16 the delta is the spec's 6 bytes.
+
+## 2026-10-04 Step 2: perturbation sweep
+
+**Ran.** `perturb` (CLI) and a `sweep` subcommand. The sweep perturbs in-memory copies on 8 worker threads, so 240 points (16 densities from 1e-6 to 1e-1 at 1, 2 and 5 per decade, 3 modes, seeds 0 to 4) never write a 1 GB file. A sweep takes about 30 s. `just e2e` checks that `perturb` on disk followed by `overlap` gives exactly the in-memory point for scattered 1e-5 seed 0, and that oracle 2 (xet-core's `chunk` example at the clone, then `sort` and `join`) gives exactly our whole-file overlap. Both hold. The clone's chunker, hashing and chunk constants are byte-identical to crates.io 1.6.0 (`diff`), so the oracle runs the same algorithm through an independent code path.
+
+**SURPRISING: the scattered points break the pre-registered theory tolerance.** Between densities 5e-6 and 5e-5 the measured scattered overlap sits 3.7 to 9.1 percentage points below `exp(-values_per_chunk * P)`, outside max(3 pp, 3 SE). Above 1e-4 it sits above the curve. `just e2e` reports the four cells and fails. Per AGENTS.md the check stays exactly as written: same curve, same tolerance.
+
+Hypotheses and tests:
+
+1. *Chunk sizes vary, and byte-weighted overlap is not the overlap of a mean-size chunk.* A chunk of `s` bytes survives with probability `(1-P)^(s/2)`, so the byte-weighted expectation is `sum(s (1-P)^(s/2)) / sum(s)`. Big chunks are both likelier to be hit and carry more bytes, which pulls the mid-range below the curve. Small chunks survive longer, which pushes the tail above it. Test: the sweep computes this size-aware curve from the base's actual chunk sizes. It matches every scattered cell within 0.25 pp. The base's chunk sizes have a coefficient of variation of 0.64, and 15.8% of chunks sit at the 128 KiB cap (`base_chunk_bytes_coefficient_of_variation` and `base_max_size_chunk_share`). **Confirmed.**
+2. *Changes move chunk boundaries and cost extra chunks.* Test (`cells[].mean_next_to_base_chunk_ratio` and `mean_reused_chunk_fraction` in `results/sweep.json`): up to 1e-3 the next file's chunk count stays within 0.07% of the base's, and the share of reused chunks matches the per-chunk prediction `mean((1-P)^(s/2))` within 0.3 pp. Boundaries do start to move at high density (the count is 1% higher at 1e-1), but by then overlap is already zero. **Rejected** as a material effect.
+3. *`perturb` alters more elements than asked, or not uniformly.* Test: the unit test counts changed elements independently, and the chunk-count match in hypothesis 2 would fail if the effective density were off. **Rejected.**
+4. *The header and other non-element bytes skew the byte fraction.* The header is under 0.01% of the file and could only raise overlap, while the gap is negative. **Rejected** by its sign and size.
+
+Decision: leave the plan's check failing and flag it for the owner. The plan curve uses mean chunk size, and that is the wrong model for byte-weighted overlap. Hypothesis 1 explains the gap, and the size-aware curve passes the same fixed tolerance with 10x margin. Swapping the gate's curve is the owner's call, because the plan fixed it in advance. Chart 1 shows both curves. The conclusion does not depend on which curve is used: both reach about zero by 1e-3, and real RL steps change about 1e-2.
+
+**Saw: the clustered modes hold up.** At every density both clustered modes sit above scattered, as the invariant requires. At 1e-2 (the blog's per-step change rate) whole-row perturbations keep about two thirds of bytes reused and whole-tensor perturbations about 99% (`results/sweep.json`).
+
+**Decided.**
+
+- Chart 1 is `docs/charts/chunk-overlap-vs-density.png`, drawn by `scripts/report.py` from `results/sweep.json`. Error bars are 3 standard errors, too small to see at this scale.
+- `e2e.sh` runs every check even after one fails, and exits non-zero if any failed, so one broken invariant does not hide the others.
+- Each step lands as a code commit plus a results commit. Result files are stamped with the code commit that produced them, and the results commit follows it.
+
+### Review of step 2 (`/code-review`, Standards and Spec)
+
+- Result files stamped with a commit that lacks the sweep code: fixed by process. The code commit lands first, then `just e2e` regenerates the results and they land in a results commit.
+- `report.py --check` returned success without checking: fixed in the docstring, which now says it passes trivially until the README exists. The real check comes with the README in step 6.
+- `# noqa` comments in report.py: fixed, `matplotlib.use("Agg")` moved into `main`.
+- Unjustified `expect` on locks: fixed, the `run_sweep` doc states the no-poisoning invariant.
+- "snapshot" in `snapshot_dtype`: fixed, renamed `checkpoint_dtype` in the train script, the manifest and both run.json files.
+- `eligible_elements` overwritten per point: kept (the value is the same for every point), but the variable is renamed so the reason is visible.
+- `(mode, density, seed)` data clump: rebutted. It travels through three call sites and a `PerturbSpec` type would add more than it removes.
+- Step 2 is not done, because 4 scattered cells sit outside the fixed tolerance: agreed. The step's code is committed with the failure flagged, and the owner's call is pending. The plan protects step 2 as the defensible result, and the clustered-vs-scattered invariant, both oracle checks, and the size-aware explanation all hold.
+- e2e checked the committed sweep artifact, not the current code: fixed. `e2e.sh` now reruns the sweep (about 30 s).
+- Manifest run entries are step 3 work: fixed by leaving `data/manifest.toml` out of the step 2 commit.
+- Oracle 2 build silenced and the path hard-coded: fixed. The build runs under `check`, and `XET_CORE_DIR` overrides the clone path.

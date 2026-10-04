@@ -6,6 +6,7 @@
 //! - [`overlap`] marks the next file's chunks as reused or new and attributes bytes to tensors.
 //! - [`perturb`] writes synthetic perturbations of a bf16 checkpoint at a chosen change density.
 //! - [`sweep`] measures chunk overlap against change density for scattered and clustered perturbations.
+//! - [`upload`] commits a pair to a `local://` store through the session API and reports `DeduplicationMetrics`.
 //! - [`results`] stamps and writes `results/<name>.json`.
 
 pub mod chunking;
@@ -16,3 +17,4 @@ pub mod perturb;
 mod properties;
 pub mod results;
 pub mod sweep;
+pub mod upload;

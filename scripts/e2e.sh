@@ -46,6 +46,19 @@ oracle_overlap_bytes() {
 checks oracle-chunk-overlap results/qwen25-scattered-1e-5-seed0.json "$(oracle_overlap_bytes "$qwen" "$perturbed")"
 rm -f "$perturbed" "$scratch/base.hashes"
 
+echo "== upload(A, A) sends only a shard"
+check "$bin" upload "$qwen" "$qwen" --name upload-qwen25-self > /dev/null
+checks upload-self results/upload-qwen25-self.json
+
+echo "== every checkpoint pair: overlap and upload invariants"
+check bash scripts/pairs.sh > /dev/null
+checks overlap results/overlap-*.json
+checks upload results/upload-run-*.json results/upload-chenjakcy6-*.json results/upload-ajjyy-*.json
+
+echo "== oracle 3: numpy unchanged element counts for run-a steps 0 and 1"
+check uv run --offline python scripts/oracle_unchanged_elements.py results/overlap-run-a-s00-s01.json \
+    "$cache/runs/run-a/step_00000.safetensors" "$cache/runs/run-a/step_00001.safetensors"
+
 if [ "$failures" -gt 0 ]; then
     echo "e2e: $failures check(s) broke an invariant"
     exit 1

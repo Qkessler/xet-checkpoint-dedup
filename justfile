@@ -33,3 +33,7 @@ train *args:
 # Regenerate README tables and charts from results/.
 report:
     uv run python scripts/report.py
+
+# Run overlap and upload on every checkpoint pair: our runs and the third-party pairs.
+pairs: build
+    bash scripts/pairs.sh

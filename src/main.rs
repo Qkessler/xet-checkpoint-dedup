@@ -8,6 +8,7 @@ use ckpt_dedup::overlap::{OverlapReport, RollupRow, measure_overlap};
 use ckpt_dedup::perturb::{PerturbMode, perturb};
 use ckpt_dedup::results::{InputStamp, repo_root, write_result};
 use ckpt_dedup::sweep::{SweepPlan, SweepReport, default_densities, run_sweep};
+use ckpt_dedup::upload::{UploadReport, measure_upload};
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -46,6 +47,16 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Commit the base then the next checkpoint to a fresh `local://` store and report the next file's dedup metrics.
+    Upload {
+        base: PathBuf,
+        next: PathBuf,
+        #[arg(long)]
+        name: String,
+        /// Directory that holds the temporary store (removed afterwards). Keep it on disk, not on a RAM-backed /tmp.
+        #[arg(long, default_value_os_t = default_scratch_dir())]
+        scratch_dir: PathBuf,
+    },
     /// Chunk overlap of perturbed copies against the original, over densities 1e-6 to 1e-1, every mode, and seeds.
     Sweep {
         input: PathBuf,
@@ -76,6 +87,12 @@ fn main() -> Result<()> {
             seed,
             output,
         } => run_perturb(&input, density, mode, seed, &output),
+        Command::Upload {
+            base,
+            next,
+            name,
+            scratch_dir,
+        } => run_upload(&cli.results_dir, &base, &next, &name, &scratch_dir),
         Command::Sweep {
             input,
             name,
@@ -83,6 +100,50 @@ fn main() -> Result<()> {
             workers,
         } => run_sweep_command(&cli.results_dir, &input, &name, seed_count, workers),
     }
+}
+
+fn default_scratch_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".cache/xet-checkpoint-dedup/scratch")
+}
+
+fn run_upload(results_dir: &Path, base: &Path, next: &Path, name: &str, scratch_dir: &Path) -> Result<()> {
+    let base_file = read_input(base)?;
+    let next_file = read_input(next)?;
+    let report =
+        measure_upload(base, next, &base_file, &next_file, scratch_dir).context("uploading to a local store")?;
+    let inputs = [
+        InputStamp::of("base", base, &base_file),
+        InputStamp::of("next", next, &next_file),
+    ];
+    let path = write_result(results_dir, name, "upload", &inputs, None, &report)?;
+    print_upload(&report);
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn print_upload(report: &UploadReport) {
+    let metrics = &report.next.dedup_metrics;
+    println!("next file bytes          {:>14}", report.next.file_bytes);
+    println!(
+        "reported file bytes      {:>14}",
+        report
+            .next
+            .reported_file_bytes
+            .map_or_else(|| "-".to_string(), |bytes| bytes.to_string())
+    );
+    println!("new_bytes                {:>14}", metrics.new_bytes);
+    println!("deduped_bytes (raw)      {:>14}", metrics.deduped_bytes);
+    println!("defrag_prevented_bytes   {:>14}", metrics.defrag_prevented_dedup_bytes);
+    println!("xorb_bytes_uploaded      {:>14}", metrics.xorb_bytes_uploaded);
+    println!("shard_bytes_uploaded     {:>14}", metrics.shard_bytes_uploaded);
+    println!("chunk overlap bytes      {:>14}", report.chunk_overlap_bytes);
+    println!("internal repeat bytes    {:>14}", report.next_internal_repeat_bytes);
+    println!("accepted dedup bytes     {:>14}", report.accepted_dedup_bytes);
+    println!("transferred bytes        {:>14}", report.transferred_bytes);
+    println!("defrag gap bytes         {:>14}", report.defrag_gap_bytes);
 }
 
 fn read_input(path: &Path) -> Result<Vec<u8>> {

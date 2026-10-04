@@ -94,9 +94,43 @@ def oracleChunkOverlap(overlapPath: str, oracleBytes: str):
     print(f"ok oracle-chunk-overlap {overlapPath} ({ours} bytes)")
 
 
+def uploadPair(path: str):
+    """Transferred data bytes are at least next size minus chunk overlap, and the defrag gap is never negative."""
+    report = load(path)["result"]
+    nextBytes = report["next"]["file_bytes"]
+    newBytes = report["next"]["dedup_metrics"]["new_bytes"]
+    if newBytes < nextBytes - report["chunk_overlap_bytes"]:
+        fail(f"{path}: new_bytes {newBytes} < next size - chunk overlap {nextBytes - report['chunk_overlap_bytes']}")
+    if report["defrag_gap_bytes"] < 0:
+        fail(f"{path}: defrag gap {report['defrag_gap_bytes']} is negative")
+    print(f"ok upload {path}")
+
+
+def uploadSelf(path: str):
+    """upload(A, A) sends no new data: new_bytes is 0, no xorb goes out, and transferred bytes are the shard alone."""
+    report = load(path)["result"]
+    metrics = report["next"]["dedup_metrics"]
+    if metrics["new_bytes"] != 0 or metrics["xorb_bytes_uploaded"] != 0:
+        fail(f"{path}: upload(A, A) new_bytes {metrics['new_bytes']}, xorb bytes {metrics['xorb_bytes_uploaded']}")
+    if not (metrics["shard_bytes_uploaded"] > 0 and report["transferred_bytes"] == metrics["shard_bytes_uploaded"]):
+        fail(f"{path}: upload(A, A) transferred {report['transferred_bytes']} is not shard overhead only")
+    print(f"ok upload-self {path} (shard {metrics['shard_bytes_uploaded']} bytes)")
+
+
+def overlapPair(path: str):
+    checkAttribution(load(path), path)
+    print(f"ok overlap {path}")
+
+
 def main():
     command, *arguments = sys.argv[1:]
-    perPath = {"self-overlap": selfOverlap, "sweep": sweep}
+    perPath = {
+        "self-overlap": selfOverlap,
+        "sweep": sweep,
+        "upload": uploadPair,
+        "upload-self": uploadSelf,
+        "overlap": overlapPair,
+    }
     if command in perPath:
         for path in arguments:
             perPath[command](path)

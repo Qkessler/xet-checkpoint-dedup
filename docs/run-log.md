@@ -132,3 +132,41 @@ Decision: leave the plan's check failing and flag it for the owner. The plan cur
 - `json.dumps` as a TOML writer: fixed. `tomlValue` accepts only scalars and flat lists and raises on anything else.
 - A crash mid-run left the manifest pointing at deleted files: fixed. The run's manifest block is removed before the old step files are deleted.
 - `--learning-rate` and `step_seconds` count as scope creep: kept, both are small. The learning rate is the one knob the future-work item needs.
+
+## 2026-10-04 Step 4: `upload` and the defrag gap
+
+**Ran.** An `upload` subcommand on the session API: one `XetSession`, a fresh `local://` store under `~/.cache/xet-checkpoint-dedup/scratch/` (on disk, not the RAM-backed `/tmp`), the base committed, then the next file committed to the same store. `scripts/pairs.sh` (`just pairs`) runs `overlap` and `upload` on 44 pairs:
+
+- `run-a` steps n to n+1 for n = 0 to 20, plus gaps 2, 5, 10 and 20.
+- `run-b-frozen-half` steps n to n+1 for n = 0 to 10, plus gaps 2, 5 and 10.
+
+`just e2e` now also runs `upload(A, A)`, every pair, the per-pair invariants, and oracle 3.
+
+**Hypotheses from step 1, tested.**
+
+1. *1.6.0 counts defrag-refused matches as deduped.* **Confirmed, with a further effect.** On run-a steps 0 to 1, `deduped_bytes` equals the full chunk overlap, even though `defrag_prevented_dedup_bytes` is non-zero. The file size the upload path reports (`XetFileInfo::file_size`, which 1.6.0 takes from `total_bytes`) exceeds the real file size by exactly `defrag_prevented_dedup_bytes`. `upload` therefore reads the file size from disk and derives the accepted dedup as `file bytes - new_bytes`. On every pair, the resulting defrag gap equals `defrag_prevented_dedup_bytes` (results `upload-*.json`). The reported size goes into `reported_file_bytes` so the bug stays visible. Upstream #931 fixes it after 1.6.0.
+2. *`local://` keeps its shard cache inside the store.* **Confirmed.** No file under `~/.cache/huggingface/xet` changed during an upload run, and the scratch store is removed afterwards.
+3. *A second commit dedups against the first commit's shard.* **Confirmed.** `results/upload-qwen25-self.json` has `new_bytes` 0 and no xorb bytes. Only a shard is sent.
+
+**Saw.**
+
+- **run-a (all layers trainable).** Chunk overlap stays between a quarter of a percent and under 3% of the file, almost all of it in the embedding. Transferred bytes are 98% to 99.8% of the anchor, 5x to 55x the sparse delta. The sparse delta per step shrinks as training goes on, and so the ratio grows. Under ADR 0001 that is "does not hold" for every pair.
+- **run-b (layers 0 to 11 frozen).** Chunk overlap is about 36.5% of the file, which is the frozen layers' share of bytes (12 x 29.8 MB of 988 MB) plus the few unchanged chunks of the embedding. Transfer is about 63% of the anchor, still over the 50% line: "does not hold".
+- **Defrag gap.** Up to about 1% of the file on run-a's consecutive pairs, and 0 on long gaps, where the remaining overlap is too thin to trip defrag prevention.
+- **Invariants.** `new_bytes >= next size - chunk overlap` and a non-negative defrag gap hold on every pair. No pair has chunks repeated inside the next file.
+- **Oracle 3.** numpy, with its own header parser, reproduces all 290 per-tensor unchanged element counts of run-a steps 0 to 1 exactly.
+
+### Review of step 4
+
+- `file_bytes - new_bytes` was a bare `u64` subtraction: fixed, `checked_sub` with an `UploadError::NewBytesExceedFile`.
+- `upload` read each file three times: fixed. `main` reads each input once and passes the bytes for both the stamp and the chunk overlap. Re-chunking inside `upload` is kept, so an upload result stands on its own. The reviewer confirmed that it agrees with `overlap` on all 44 pairs.
+- Dead "explained by repeats" branch in the invariant: fixed, removed. Repeats inside the file never excuse a failure.
+- `next_internal_repeat_bytes` is always 0: kept. It is the measured reason the invariant needs no repeat allowance.
+- "range" (an _Avoid_ word for Term) in `upload.rs` and the log: fixed, now "match".
+- The justfile `pairs` comment promised third-party pairs: fixed, `pairs.sh` now also runs both Hub pairs.
+- Results stamped with a dirty older commit: fixed by process (code commit, then `just e2e` restamps, then a results commit).
+- `results/upload-qwen25-self.json` missing: the earlier `upload A A` run wrote to `results/tmp`. The full `just e2e` after this commit writes it and checks it.
+- The defrag-gap redefinition lived only in the run log: fixed by ADR 0005. The "#931" claim was checked by diffing the crates.io source against the xet-core clone at `d2f667c` (step 1). The clone sits outside the repo, which is why the reviewer could not see it.
+- `upload(A, A)` check weaker than "shard overhead only": fixed. It now also asserts that shard bytes are above 0 and that transferred bytes equal the shard bytes.
+- `new_bytes` is uncompressed: noted in ADR 0005 and goes under the README limitations.
+- run-b's 36.5% explanation read as "the whole embedding": fixed in the wording.
